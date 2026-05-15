@@ -43,6 +43,9 @@ build {
     playbook_file   = "${path.root}/../ansible/playbook.yml"
     use_proxy       = true
     ansible_env_vars = [
+      "ANSIBLE_CONFIG=${path.root}/../ansible.cfg",
+      "ANSIBLE_REMOTE_TEMP=/tmp/.ansible-osworld",
+      "ANSIBLE_REMOTE_TMP=/tmp/.ansible-osworld",
       "ANSIBLE_BECOME_PASSWORD_FILE=${path.root}/../scripts/ansible-become-pass.sh",
       "OSWORLD_SUDO_PASSWORD=${var.aws_ssh_password}",
     ]

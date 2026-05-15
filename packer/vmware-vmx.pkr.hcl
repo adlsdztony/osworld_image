@@ -4,7 +4,7 @@ source "vmware-vmx" "osworld" {
   vm_name          = var.vmware_vm_name
 
   headless         = var.headless
-  shutdown_command = "echo '${var.ssh_password}' | sudo -S shutdown -P now"
+  shutdown_command = "echo 'osworld-public-evaluation' | sudo -S shutdown -P now"
   ssh_password     = var.ssh_password
   ssh_timeout      = var.ssh_timeout
   ssh_username     = var.ssh_username
@@ -23,6 +23,9 @@ build {
     playbook_file   = "${path.root}/../ansible/playbook.yml"
     use_proxy       = true
     ansible_env_vars = [
+      "ANSIBLE_CONFIG=${path.root}/../ansible.cfg",
+      "ANSIBLE_REMOTE_TEMP=/tmp/.ansible-osworld",
+      "ANSIBLE_REMOTE_TMP=/tmp/.ansible-osworld",
       "ANSIBLE_BECOME_PASSWORD_FILE=${path.root}/../scripts/ansible-become-pass.sh",
       "OSWORLD_SUDO_PASSWORD=${var.ssh_password}",
     ]

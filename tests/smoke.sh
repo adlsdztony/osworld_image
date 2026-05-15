@@ -33,6 +33,15 @@ assert_dpkg_version() {
   assert_contains "$version" "$expected" "$package version"
 }
 
+assert_desktop_icon() {
+  local desktop_name="$1"
+  local icon_name="$2"
+  local icon_path="$3"
+  local desktop_file="/usr/share/applications/$desktop_name.desktop"
+  grep -q "^Icon=$icon_name$" "$desktop_file" || fail "$desktop_file missing Icon=$icon_name"
+  test -s "$icon_path" || fail "$icon_path missing or empty"
+}
+
 assert_dpkg_version obsidian "1.10.6"
 assert_dpkg_version xmind-vana "26.1.3145"
 assert_dpkg_version wps-office "11.1.0.11723"
@@ -55,6 +64,12 @@ assert_contains "$blender_version" "Blender 5.0.0" "Blender version"
 zotero_version="$(awk -F= '/^Version=/ {print $2}' /opt/zotero-8.0.2/Zotero_linux-x86_64/app/application.ini)"
 [[ "$zotero_version" == "8.0.2" ]] || fail "Zotero version expected 8.0.2, got $zotero_version"
 
+assert_desktop_icon shotcut shotcut /usr/share/icons/hicolor/128x128/apps/shotcut.png
+assert_desktop_icon labplot labplot /usr/share/icons/hicolor/scalable/apps/labplot.svg
+assert_desktop_icon musescore musescore /usr/share/icons/hicolor/512x512/apps/musescore.png
+assert_desktop_icon blender blender /usr/share/icons/hicolor/scalable/apps/blender.svg
+assert_desktop_icon zotero zotero /usr/share/icons/hicolor/128x128/apps/zotero.png
+
 grep -q '^version=7.64$' "$OSWORLD_HOME/opt/REAPER/.osworld-version" || fail "REAPER version manifest missing 7.64"
 test -x "$OSWORLD_HOME/opt/REAPER/reaper" || fail "REAPER binary missing"
 
@@ -62,9 +77,11 @@ jq -e '.SafeBrowsingProtectionLevel == 0 and .SafeBrowsingEnabled == false' \
   /etc/opt/chrome/policies/managed/osworld-safe-browsing.json >/dev/null \
   || fail "Chrome Safe Browsing policy is not no-protection"
 
-grep -R 'extensions.zotero.httpServer.enabled", true' "$OSWORLD_HOME/.zotero/zotero" >/dev/null \
+find "$OSWORLD_HOME/.zotero/zotero" -type f \( -name prefs.js -o -name user.js \) \
+  -exec grep -q 'extensions.zotero.httpServer.enabled", true' {} + \
   || fail "Zotero httpServer.enabled preference missing"
-grep -R 'extensions.zotero.httpServer.localAPI.enabled", true' "$OSWORLD_HOME/.zotero/zotero" >/dev/null \
+find "$OSWORLD_HOME/.zotero/zotero" -type f \( -name prefs.js -o -name user.js \) \
+  -exec grep -q 'extensions.zotero.httpServer.localAPI.enabled", true' {} + \
   || fail "Zotero localAPI.enabled preference missing"
 
 awk '
@@ -94,6 +111,15 @@ done
 fc-list | awk 'BEGIN { IGNORECASE=1 } /Wingdings|Webdings|MT Extra|Symbol/ { found=1 } END { exit found ? 0 : 1 }' \
   || fail "WPS symbol fonts not visible to fc-list"
 
+tilde_leftover="$(find "$OSWORLD_HOME" -mindepth 1 -maxdepth 1 -type d -name '~*' -print -quit)"
+[[ -z "$tilde_leftover" ]] || fail "unexpected tilde-prefixed home leftover: $tilde_leftover"
+if [ -d "$OSWORLD_HOME/Desktop" ]; then
+  wps_shortcut_leftover="$(find "$OSWORLD_HOME/Desktop" -maxdepth 1 -type f -name 'wps-office*.desktop' -print -quit)"
+  [[ -z "$wps_shortcut_leftover" ]] || fail "unexpected WPS desktop shortcut leftover: $wps_shortcut_leftover"
+fi
+test ! -d /var/cache/osworld-delta || fail "/var/cache/osworld-delta provisioning cache was not removed"
+test ! -d /opt/osworld-server-src || fail "/opt/osworld-server-src transient clone was not removed"
+
 server_marker=""
 for candidate in "$OSWORLD_HOME/server" "$OSWORLD_HOME/osworld/server" /opt/osworld/server /server; do
   if [ -f "$candidate/.osworld-server-commit" ]; then
@@ -104,5 +130,11 @@ done
 [[ -n "$server_marker" ]] || fail "OSWorld server commit marker missing"
 server_commit="$(cat "$server_marker")"
 [[ "$server_commit" == "8bb13c5315392e2500f9a27013285bbc375b2c3a" ]] || fail "OSWorld server commit marker mismatch"
+
+systemctl is-active --quiet osworld.service || fail "osworld.service is not active"
+ss -ltn | awk '$4 ~ /:5000$/ { found=1 } END { exit found ? 0 : 1 }' \
+  || fail "osworld.service is not listening on port 5000"
+test -x "${server_marker%/.osworld-server-commit}/.venv/bin/python" \
+  || fail "OSWorld server virtualenv python missing"
 
 printf 'Smoke checks passed for user %s\n' "$OSWORLD_USER"

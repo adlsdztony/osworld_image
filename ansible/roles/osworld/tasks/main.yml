@@ -51,3 +51,74 @@
   register: osworld_server_marker
   changed_when: false
   failed_when: osworld_server_marker.stdout != osworld_server_commit
+
+- name: Install pinned uv for OSWorld server environment
+  ansible.builtin.command: "python3 -m pip install --user uv=={{ osworld_uv_version }}"
+  become: true
+  become_user: "{{ effective_osworld_user }}"
+  environment:
+    HOME: "{{ effective_osworld_home }}"
+  register: osworld_uv_install
+  changed_when: "'Successfully installed' in osworld_uv_install.stdout"
+
+- name: Sync OSWorld server Python environment from lockfile
+  ansible.builtin.command: "{{ effective_osworld_home }}/.local/bin/uv sync --frozen --no-dev"
+  become: true
+  become_user: "{{ effective_osworld_user }}"
+  environment:
+    HOME: "{{ effective_osworld_home }}"
+  args:
+    chdir: "{{ osworld_server_dest }}"
+  register: osworld_uv_sync
+  changed_when: >-
+    'Creating virtual environment' in (osworld_uv_sync.stdout + osworld_uv_sync.stderr)
+    or 'Installed ' in (osworld_uv_sync.stdout + osworld_uv_sync.stderr)
+
+- name: Install OSWorld systemd service
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ osworld_service_name }}"
+    mode: "0644"
+    content: |
+      [Unit]
+      Description=osworld service
+      StartLimitIntervalSec=60
+      StartLimitBurst=4
+      After=network.target auditd.service
+
+      [Service]
+      Type=simple
+      ExecStart={{ osworld_server_dest }}/.venv/bin/python {{ osworld_server_dest }}/main.py
+      User={{ effective_osworld_user }}
+      WorkingDirectory={{ osworld_server_dest }}
+      Environment="DISPLAY=:0"
+      {% if target_platform | default('') == 'qemu' %}
+      Environment="XAUTHORITY=/run/user/{{ effective_osworld_uid }}/gdm/Xauthority"
+      {% endif %}
+      Environment="DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/{{ effective_osworld_uid }}/bus"
+      Environment="XDG_RUNTIME_DIR=/run/user/{{ effective_osworld_uid }}"
+      Environment="OSWORLD_SERVER_HOST={{ osworld_server_host }}"
+      Environment="OSWORLD_SERVER_PORT={{ osworld_server_port }}"
+      Restart=on-failure
+      RestartSec=5s
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: Enable and restart OSWorld service
+  ansible.builtin.systemd:
+    name: "{{ osworld_service_name }}"
+    enabled: true
+    state: restarted
+    daemon_reload: true
+
+- name: Wait for OSWorld server port
+  ansible.builtin.wait_for:
+    host: 127.0.0.1
+    port: "{{ osworld_server_port }}"
+    timeout: 30
+
+- name: Verify OSWorld service is active
+  ansible.builtin.command: "systemctl is-active {{ osworld_service_name }}"
+  register: osworld_service_state
+  changed_when: false
+  failed_when: osworld_service_state.stdout != "active"

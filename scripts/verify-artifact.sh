@@ -8,7 +8,7 @@ usage() {
 Usage:
   scripts/verify-artifact.sh local [osworld_user]
   scripts/verify-artifact.sh ssh <host> <ssh_user> [port] [osworld_user]
-  scripts/verify-artifact.sh qemu <qcow2_path> [ssh_user] [ssh_password] [osworld_user]
+  scripts/verify-artifact.sh qemu <qcow2_path> [ssh_user] [ssh_password default: osworld-public-evaluation] [osworld_user]
   scripts/verify-artifact.sh aws <ami_id> [osworld_user]
 EOF
 }

@@ -18,9 +18,9 @@ variable "ssh_username" {
 
 variable "ssh_password" {
   type        = string
-  default     = ""
+  default     = "password"
   sensitive   = true
-  description = "SSH password for local VM builders. Prefer an ignored local var file or PKR_VAR_ssh_password."
+  description = "Initial SSH password for local VM builders. The OSWorld local VM bases use the public default password. QEMU and VMware artifacts reset the user password to the public OSWorld password during provisioning."
 }
 
 variable "ssh_timeout" {
@@ -58,9 +58,9 @@ variable "aws_ssh_username" {
 
 variable "aws_ssh_password" {
   type        = string
-  default     = ""
+  default     = "osworld-public-evaluation"
   sensitive   = true
-  description = "Optional SSH password for the AWS source AMI. Prefer PKR_VAR_aws_ssh_password."
+  description = "SSH password for the AWS source AMI. The OSWorld AWS base uses this public default password."
 }
 
 variable "aws_subnet_id" {

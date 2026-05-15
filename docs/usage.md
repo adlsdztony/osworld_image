@@ -4,7 +4,7 @@ This project starts from known-good OSWorld base images and applies a determinis
 
 ## Inputs
 
-Use environment variables or ignored local var files for sensitive data. Do not put credentials in tracked files.
+Use environment variables or ignored local var files for sensitive data. Do not put private credentials in tracked files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local VM base images use `password`, and final QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`.
 
 Required before full execution:
 
@@ -59,8 +59,9 @@ Run after credentials and network choices are confirmed:
 packer build -only=aws.amazon-ebs.osworld packer
 ```
 
-The default AWS SSH user is `user`. Set `PKR_VAR_aws_ssh_password` in the environment when the source AMI uses password login.
+The default AWS SSH user is `user`, and the default SSH password is the public OSWorld password `osworld-public-evaluation`.
 The same value is passed to Ansible as the sudo password through an environment-only password helper.
+Set `PKR_VAR_aws_ssh_password` only if the source AMI password differs.
 
 If using existing network resources, put non-secret values in an ignored var file such as `packer/local.auto.pkrvars.hcl`:
 
@@ -88,13 +89,15 @@ packer build -only=qemu.qemu.osworld packer
 scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2
 ```
 
-Set `SSH_PORT`, `OSWORLD_SSH_PASSWORD`, or pass SSH user/password arguments, if the base image differs from the defaults.
+The local VM builder defaults to the public base-image password `password`. The QEMU artifact resets `user` to the public OSWorld password `osworld-public-evaluation`; `scripts/smoke-qemu.sh` uses that as its default. Set `PKR_VAR_ssh_password`, `SSH_PORT`, `OSWORLD_SSH_PASSWORD`, or pass SSH user/password arguments only if the source or artifact differs from the defaults.
 
 ## VMware Build
 
 ```bash
 packer build -only=vmware.vmware-vmx.osworld packer
 ```
+
+The local VM builder defaults to the public source-VM password `password`. The VMware artifact also resets `user` to `osworld-public-evaluation`.
 
 Full VMware testing requires VMware Workstation and `vmrun`.
 

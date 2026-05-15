@@ -1,4 +1,5 @@
 default_osworld_user: user
+local_vm_final_password: osworld-public-evaluation
 
 artifact_cache_dir: /var/cache/osworld-delta
 appimage_dir: /opt/osworld-appimages
@@ -6,6 +7,10 @@ download_timeout_seconds: 300
 
 osworld_server_repo_url: https://github.com/adlsdztony/osworld-server.git
 osworld_server_commit: 8bb13c5315392e2500f9a27013285bbc375b2c3a
+osworld_uv_version: "0.9.13"
+osworld_service_name: osworld.service
+osworld_server_host: 0.0.0.0
+osworld_server_port: 5000
 osworld_server_dest_candidates:
   - "{{ effective_osworld_home }}/server"
   - "{{ effective_osworld_home }}/osworld/server"
@@ -45,6 +50,8 @@ appimages:
     checksum: "sha256:837e0306fa970e2f2627317859c10b83a3f4728e5cd1918995d29e5284b34415"
     filename: "shotcut-26.2.26.AppImage"
     categories: "AudioVideo;Video;AudioVideoEditing;"
+    icon_source: "usr/bin/share/icons/hicolor/128x128/apps/org.shotcut.Shotcut.png"
+    icon_dest: "/usr/share/icons/hicolor/128x128/apps/shotcut.png"
   - name: labplot
     display_name: LabPlot
     version: "2.12.1"
@@ -52,6 +59,8 @@ appimages:
     checksum: "sha256:1b700d60b3297a987022cfc532e413b8211ef917059a21155d8b5604f3012a82"
     filename: "labplot-2.12.1-x86_64.AppImage"
     categories: "Education;Science;Math;"
+    icon_source: "usr/share/icons/hicolor/scalable/apps/org.kde.labplot.svg"
+    icon_dest: "/usr/share/icons/hicolor/scalable/apps/labplot.svg"
     validate_certs: false
   - name: musescore
     display_name: "MuseScore Studio"
@@ -60,6 +69,8 @@ appimages:
     checksum: "sha256:8b6570311a245495c0d93541a3737e4ca118a1450337655e06b3fd8d18527483"
     filename: "MuseScore-Studio-4.6.0.252730944-x86_64.AppImage"
     categories: "Audio;Music;Education;"
+    icon_source: "share/icons/hicolor/512x512/apps/mscore4portable.png"
+    icon_dest: "/usr/share/icons/hicolor/512x512/apps/musescore.png"
 
 blender:
   version: "5.0.0"

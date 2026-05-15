@@ -35,7 +35,7 @@ build/       构建输出，git ignored
 - `virt-customize`，用于给 qcow2 base 准备 SSH
 - VMware Workstation 和 `vmrun`，仅在需要完整 VMware 本地测试时使用
 
-敏感信息只通过环境变量或 ignored var 文件传入。不要把 AWS key、SSH 密码、下载的镜像、构建产物或 `.pkrvars.hcl` 提交进仓库。
+敏感信息只通过环境变量或 ignored var 文件传入。不要把 AWS key、私有 SSH 密码、下载的镜像、构建产物或 `.pkrvars.hcl` 提交进仓库。OSWorld 的公开默认密码会直接写在配置里：AWS 使用 `osworld-public-evaluation`，本地 VM base 使用 `password`，QEMU/VMware 最终产物会把 `user` 重置为 `osworld-public-evaluation`。
 
 ## 快速开始
 
@@ -77,15 +77,15 @@ source_ami = "ami-0d23263edb96951d8"
 
 ```bash
 export AWS_REGION=us-east-1
-export PKR_VAR_aws_ssh_password='<source-ami-ssh-password>'
 packer build -only=aws.amazon-ebs.osworld packer
 ```
+
+只有源 AMI 密码不同于公开默认值时，才需要覆盖 `PKR_VAR_aws_ssh_password`。
 
 Smoke test AMI。可以提供已有 security group：
 
 ```bash
 AWS_SMOKE_SECURITY_GROUP_ID=sg-... \
-OSWORLD_SSH_PASSWORD='<ami-ssh-password>' \
 scripts/smoke-aws.sh ami-...
 ```
 
@@ -93,7 +93,6 @@ scripts/smoke-aws.sh ami-...
 
 ```bash
 AWS_SMOKE_ALLOW_TEMP_NETWORK=true \
-OSWORLD_SSH_PASSWORD='<ami-ssh-password>' \
 scripts/smoke-aws.sh ami-...
 ```
 
@@ -102,14 +101,16 @@ scripts/smoke-aws.sh ami-...
 构建 qcow2：
 
 ```bash
-export PKR_VAR_ssh_password='<qcow2-ssh-password>'
 packer build -only=qemu.qemu.osworld packer
 ```
+
+本地 VM builder 默认使用公开 base image 密码 `password`。只有源 qcow2 密码不同才需要覆盖 `PKR_VAR_ssh_password`。
+
+QEMU 产物会把 `user` 密码重置为公开 OSWorld 密码：`osworld-public-evaluation`。
 
 验证产物：
 
 ```bash
-OSWORLD_SSH_PASSWORD='<qcow2-ssh-password>' \
 scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 ```
 
@@ -118,9 +119,12 @@ scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 VMware builder 从下载解压出的 `.vmx` 派生：
 
 ```bash
-export PKR_VAR_ssh_password='<vm-ssh-password>'
 packer build -only=vmware.vmware-vmx.osworld packer
 ```
+
+本地 VM builder 默认使用公开源 VM 密码 `password`。只有源 VM 密码不同才需要覆盖 `PKR_VAR_ssh_password`。
+
+VMware 产物也会把 `user` 密码重置为 `osworld-public-evaluation`。
 
 完整 VMware 本地 smoke test 需要 `vmrun`。如果当前机器没有 VMware Workstation 或 `vmrun`，只能验证 builder 配置，不能完成本地运行测试。
 
@@ -147,6 +151,7 @@ Ansible playbook 会安装或验证以下版本：
 - `/etc/X11/xorg.conf` 的 `MaxClients 2048`
 - 常见 office MIME 类型默认使用 LibreOffice
 - WPS symbol fonts，并通过 checksum 和 `fc-list` 验证
+- QEMU 和 VMware 的 `user` 密码设置为 `osworld-public-evaluation`
 
 ## Smoke Check
 
@@ -164,7 +169,7 @@ Ansible playbook 会安装或验证以下版本：
 
 ```bash
 scripts/verify-artifact.sh aws ami-...
-scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow2 user '<qcow2-ssh-password>'
+scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 ```
 
 ## 本地生成文件
@@ -182,4 +187,3 @@ scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow
 - `*.AppImage`
 - `*.tar.xz`
 - `*.pem`
-

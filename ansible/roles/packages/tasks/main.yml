@@ -28,11 +28,16 @@
   ansible.builtin.apt:
     name:
       - ca-certificates
+      - build-essential
       - curl
       - desktop-file-utils
       - fontconfig
       - git
+      - iproute2
       - jq
+      - python3-dev
+      - python3-pip
+      - python3-venv
       - snapd
       - tar
       - unzip
@@ -163,6 +168,21 @@
   loop_control:
     label: "{{ item.name }}"
 
+- name: Install AppImage icons
+  ansible.builtin.shell: |
+    set -euo pipefail
+    tmp_dir="$(mktemp -d)"
+    trap 'rm -rf "$tmp_dir"' EXIT
+    cd "$tmp_dir"
+    "{{ appimage_dir }}/{{ item.filename }}" --appimage-extract >/dev/null
+    install -D -m 0644 "squashfs-root/{{ item.icon_source }}" "{{ item.icon_dest }}"
+  args:
+    executable: /bin/bash
+  changed_when: true
+  loop: "{{ appimages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
 - name: Install AppImage desktop files
   ansible.builtin.copy:
     dest: "/usr/share/applications/{{ item.name }}.desktop"
@@ -172,6 +192,7 @@
       Type=Application
       Name={{ item.display_name }}
       Exec={{ appimage_dir }}/{{ item.filename }} %U
+      Icon={{ item.name }}
       Terminal=false
       Categories={{ item.categories }}
   loop: "{{ appimages }}"
@@ -204,6 +225,13 @@
     state: link
     force: true
 
+- name: Install Blender icon
+  ansible.builtin.copy:
+    src: "{{ blender.install_dir }}/blender.svg"
+    dest: /usr/share/icons/hicolor/scalable/apps/blender.svg
+    remote_src: true
+    mode: "0644"
+
 - name: Install Blender desktop file
   ansible.builtin.copy:
     dest: /usr/share/applications/blender.desktop
@@ -213,6 +241,7 @@
       Type=Application
       Name=Blender
       Exec={{ blender.install_dir }}/blender %f
+      Icon=blender
       Terminal=false
       Categories=Graphics;3DGraphics;
 
@@ -254,6 +283,13 @@
     state: link
     force: true
 
+- name: Install Zotero icon
+  ansible.builtin.copy:
+    src: "{{ zotero.install_dir }}/Zotero_linux-x86_64/icons/icon128.png"
+    dest: /usr/share/icons/hicolor/128x128/apps/zotero.png
+    remote_src: true
+    mode: "0644"
+
 - name: Install Zotero desktop file
   ansible.builtin.copy:
     dest: /usr/share/applications/zotero.desktop
@@ -263,6 +299,7 @@
       Type=Application
       Name=Zotero
       Exec={{ zotero.install_dir }}/Zotero_linux-x86_64/zotero %U
+      Icon=zotero
       Terminal=false
       Categories=Office;Database;
 
@@ -273,6 +310,20 @@
   register: zotero_version
   changed_when: false
   failed_when: zotero_version.stdout != zotero.version
+
+- name: Refresh desktop application database
+  ansible.builtin.command: update-desktop-database /usr/share/applications
+  changed_when: true
+
+- name: Refresh hicolor icon cache
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+      gtk-update-icon-cache -f -t /usr/share/icons/hicolor
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: true
 
 - name: Download REAPER archive
   ansible.builtin.get_url:

@@ -21,6 +21,7 @@
     - name: Set target OSWorld home
       ansible.builtin.set_fact:
         effective_osworld_home: "{{ osworld_passwd.stdout.split(':')[5] }}"
+        effective_osworld_uid: "{{ osworld_passwd.stdout.split(':')[2] }}"
 
   roles:
     - packages
@@ -30,3 +31,65 @@
     - x11
     - defaults
 
+  post_tasks:
+    - name: Remove WPS desktop shortcuts created during deb installation
+      ansible.builtin.shell: |
+        set -euo pipefail
+        changed=0
+        desktop_dirs=(
+          "{{ effective_osworld_home }}/Desktop"
+        )
+        user_desktop="$(runuser -u "{{ effective_osworld_user }}" -- env HOME="{{ effective_osworld_home }}" xdg-user-dir DESKTOP 2>/dev/null || true)"
+        if [ -n "$user_desktop" ]; then
+          desktop_dirs+=("$user_desktop")
+        fi
+        for desktop_dir in "${desktop_dirs[@]}"; do
+          [ -d "$desktop_dir" ] || continue
+          while IFS= read -r shortcut; do
+            rm -f "$shortcut"
+            changed=1
+          done < <(find "$desktop_dir" -maxdepth 1 -type f -name 'wps-office*.desktop' -print)
+        done
+        printf 'changed=%s\n' "$changed"
+      args:
+        executable: /bin/bash
+      register: wps_desktop_shortcut_cleanup
+      changed_when: "'changed=1' in wps_desktop_shortcut_cleanup.stdout"
+
+    - name: Remove controller-name Ansible temp directories from OSWorld home
+      ansible.builtin.shell: |
+        set -euo pipefail
+        changed=0
+        while IFS= read -r candidate; do
+          [ -d "$candidate/.ansible" ] || continue
+          if [ -z "$(find "$candidate" -mindepth 1 ! -path "$candidate/.ansible" ! -path "$candidate/.ansible/*" -print -quit)" ]; then
+            rm -rf "$candidate"
+            changed=1
+          fi
+        done < <(find "{{ effective_osworld_home }}" -mindepth 1 -maxdepth 1 -type d -name '~*' -print)
+        printf 'changed=%s\n' "$changed"
+      args:
+        executable: /bin/bash
+      register: ansible_tilde_temp_cleanup
+      changed_when: "'changed=1' in ansible_tilde_temp_cleanup.stdout"
+
+    - name: Remove transient provisioning caches
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ artifact_cache_dir }}"
+        - /opt/osworld-server-src
+
+    - name: Clean apt package cache
+      ansible.builtin.command: apt-get clean
+      changed_when: true
+
+    - name: Set public OSWorld password for local VM artifacts
+      ansible.builtin.shell: |
+        set -euo pipefail
+        printf '%s:%s\n' "{{ effective_osworld_user }}" "{{ local_vm_final_password }}" | chpasswd
+      args:
+        executable: /bin/bash
+      when: target_platform | default('') in ['qemu', 'vmware']
+      changed_when: true

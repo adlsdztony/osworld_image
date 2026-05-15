@@ -35,7 +35,7 @@ The local machine needs:
 - `virt-customize`, used to prepare the qcow2 base for SSH
 - VMware Workstation and `vmrun`, only for full local VMware testing
 
-Pass sensitive values only through environment variables or ignored local var files. Do not commit AWS keys, SSH passwords, downloaded images, build artifacts, or `.pkrvars.hcl` files.
+Pass sensitive values only through environment variables or ignored local var files. Do not commit AWS keys, private SSH passwords, downloaded images, build artifacts, or `.pkrvars.hcl` files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local VM base images use `password`, and final QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`.
 
 ## Quick Start
 
@@ -77,15 +77,15 @@ Build the AMI:
 
 ```bash
 export AWS_REGION=us-east-1
-export PKR_VAR_aws_ssh_password='<source-ami-ssh-password>'
 packer build -only=aws.amazon-ebs.osworld packer
 ```
+
+Override `PKR_VAR_aws_ssh_password` only if the source AMI password differs from the public default.
 
 Smoke test the AMI with an existing security group:
 
 ```bash
 AWS_SMOKE_SECURITY_GROUP_ID=sg-... \
-OSWORLD_SSH_PASSWORD='<ami-ssh-password>' \
 scripts/smoke-aws.sh ami-...
 ```
 
@@ -93,7 +93,6 @@ Or let the script create and clean up a temporary security group:
 
 ```bash
 AWS_SMOKE_ALLOW_TEMP_NETWORK=true \
-OSWORLD_SSH_PASSWORD='<ami-ssh-password>' \
 scripts/smoke-aws.sh ami-...
 ```
 
@@ -102,14 +101,16 @@ scripts/smoke-aws.sh ami-...
 Build the qcow2:
 
 ```bash
-export PKR_VAR_ssh_password='<qcow2-ssh-password>'
 packer build -only=qemu.qemu.osworld packer
 ```
+
+The local VM builder defaults to the public base-image password `password`. Override `PKR_VAR_ssh_password` only if the source qcow2 password differs.
+
+The QEMU artifact resets the `user` password to the public OSWorld password: `osworld-public-evaluation`.
 
 Verify the artifact:
 
 ```bash
-OSWORLD_SSH_PASSWORD='<qcow2-ssh-password>' \
 scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 ```
 
@@ -118,9 +119,12 @@ scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 The VMware builder derives from the downloaded and extracted `.vmx` file:
 
 ```bash
-export PKR_VAR_ssh_password='<vm-ssh-password>'
 packer build -only=vmware.vmware-vmx.osworld packer
 ```
+
+The local VM builder defaults to the public source-VM password `password`. Override `PKR_VAR_ssh_password` only if the source VM password differs.
+
+The VMware artifact also resets the `user` password to `osworld-public-evaluation`.
 
 Full local VMware smoke testing requires `vmrun`. If VMware Workstation or `vmrun` is unavailable, only builder configuration validation can be completed locally.
 
@@ -147,6 +151,7 @@ It also configures:
 - `/etc/X11/xorg.conf` with `MaxClients 2048`
 - Common office MIME defaults to LibreOffice
 - WPS symbol fonts, verified by checksum and `fc-list`
+- QEMU and VMware `user` password set to `osworld-public-evaluation`
 
 ## Smoke Checks
 
@@ -164,7 +169,7 @@ It also configures:
 
 ```bash
 scripts/verify-artifact.sh aws ami-...
-scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow2 user '<qcow2-ssh-password>'
+scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 ```
 
 ## Local Generated Files
@@ -182,4 +187,3 @@ The following paths are generated locally and ignored by git:
 - `*.AppImage`
 - `*.tar.xz`
 - `*.pem`
-

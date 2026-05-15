@@ -4,18 +4,13 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE_PATH="${1:-}"
 SSH_USER="${2:-user}"
-SSH_PASSWORD="${3:-${OSWORLD_SSH_PASSWORD:-}}"
+SSH_PASSWORD="${3:-${OSWORLD_SSH_PASSWORD:-osworld-public-evaluation}}"
 OSWORLD_USER="${4:-$SSH_USER}"
 SSH_PORT="${SSH_PORT:-2222}"
 PID_FILE="$ROOT_DIR/build/qemu-smoke-${SSH_PORT}.pid"
 
 if [ -z "$IMAGE_PATH" ]; then
   printf 'Usage: scripts/smoke-qemu.sh <qcow2_path> [ssh_user] [ssh_password] [osworld_user]\n' >&2
-  exit 2
-fi
-
-if [ -z "$SSH_PASSWORD" ]; then
-  printf 'Provide the VM SSH password as argument 3 or OSWORLD_SSH_PASSWORD.\n' >&2
   exit 2
 fi
 
