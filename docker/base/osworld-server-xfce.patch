@@ -1,0 +1,180 @@
+--- home/user/server/main.py
++++ home/user/server/main.py
+@@ -333,14 +333,36 @@
+     return send_file(file_path, mimetype='image/png')
+ 
+ 
++_LINUX_TERMINAL_APPLICATION_NAMES = {
++    "gnome-terminal-server",
++    "xfce4-terminal",
++    "xterm",
++}
++
++_LINUX_TERMINAL_APPLICATION_XPATH_NAMES = (
++    "gnome-terminal-server",
++    "xfce4-terminal",
++    "xterm",
++    "XTerm",
++)
++
++
++def _is_linux_terminal_application(app: Accessible) -> bool:
++    app_name = (getattr(app, "name", "") or "").lower()
++    return app.getRoleName() == "application" and app_name in _LINUX_TERMINAL_APPLICATION_NAMES
++
++
+ def _has_active_terminal(desktop: Accessible) -> bool:
+-    """ A quick check whether the terminal window is open and active.
+-    """
++    """A quick check whether a supported terminal window is open and active."""
+     for app in desktop:
+-        if app.getRoleName() == "application" and app.name == "gnome-terminal-server":
++        if not _is_linux_terminal_application(app):
++            continue
++        try:
+             for frame in app:
+                 if frame.getRoleName() == "frame" and frame.getState().contains(pyatspi.STATE_ACTIVE):
+                     return True
++        except Exception:
++            continue
+     return False
+ 
+ 
+@@ -353,11 +375,19 @@
+             desktop: Accessible = pyatspi.Registry.getDesktop(0)
+             if _has_active_terminal(desktop):
+                 desktop_xml: _Element = _create_atspi_node(desktop)
+-                # 1. the terminal window (frame of application is st:active) is open and active
+-                # 2. the terminal tab (terminal status is st:focused) is focused
+-                xpath = '//application[@name="gnome-terminal-server"]/frame[@st:active="true"]//terminal[@st:focused="true"]'
+-                terminals: List[_Element] = desktop_xml.xpath(xpath, namespaces=_accessibility_ns_map_ubuntu)
+-                output = terminals[0].text.rstrip() if len(terminals) == 1 else None
++                terminal_app_predicate = " or ".join(
++                    f'@name="{app_name}"' for app_name in _LINUX_TERMINAL_APPLICATION_XPATH_NAMES
++                )
++                xpaths = [
++                    f'//application[{terminal_app_predicate}]/frame[@st:active="true"]//terminal[@st:focused="true"]',
++                    f'//application[{terminal_app_predicate}]//terminal[@st:focused="true"]',
++                    f'//application[{terminal_app_predicate}]/frame[@st:active="true"]//terminal',
++                ]
++                for xpath in xpaths:
++                    terminals: List[_Element] = desktop_xml.xpath(xpath, namespaces=_accessibility_ns_map_ubuntu)
++                    if len(terminals) == 1:
++                        output = (terminals[0].text or "").rstrip()
++                        break
+         else:  # windows and macos platform is not implemented currently
+             # raise NotImplementedError
+             return "Currently not implemented for platform {:}.".format(platform.platform()), 500
+@@ -1035,6 +1065,41 @@
+ 
+ @app.route('/wallpaper', methods=['POST'])
+ def get_wallpaper():
++    def normalize_wallpaper_path(raw_path: str) -> Optional[str]:
++        wallpaper_path = raw_path.strip().strip("'\"")
++        if wallpaper_path.startswith("file://"):
++            wallpaper_path = wallpaper_path[len("file://"):]
++        wallpaper_path = os.path.expandvars(os.path.expanduser(wallpaper_path))
++        if wallpaper_path and os.path.exists(wallpaper_path):
++            return wallpaper_path
++        return None
++
++    def xfce_wallpaper_properties() -> List[str]:
++        try:
++            output = subprocess.check_output(
++                ["xfconf-query", "-c", "xfce4-desktop", "-l"],
++                stderr=subprocess.PIPE,
++                text=True,
++            )
++        except (FileNotFoundError, subprocess.CalledProcessError):
++            return []
++        return [prop.strip() for prop in output.splitlines() if prop.strip().endswith("/last-image")]
++
++    def get_wallpaper_xfce() -> Optional[str]:
++        for prop in xfce_wallpaper_properties():
++            try:
++                output = subprocess.check_output(
++                    ["xfconf-query", "-c", "xfce4-desktop", "-p", prop],
++                    stderr=subprocess.PIPE,
++                    text=True,
++                )
++            except (FileNotFoundError, subprocess.CalledProcessError):
++                continue
++            wallpaper_path = normalize_wallpaper_path(output)
++            if wallpaper_path:
++                return wallpaper_path
++        return None
++
+     def get_wallpaper_windows():
+         SPI_GETDESKWALLPAPER = 0x73
+         MAX_PATH = 260
+@@ -1054,13 +1119,17 @@
+         return output.strip().decode('utf-8')
+ 
+     def get_wallpaper_linux():
++        wallpaper_path = get_wallpaper_xfce()
++        if wallpaper_path:
++            return wallpaper_path
+         try:
+             output = subprocess.check_output(
+                 ["gsettings", "get", "org.gnome.desktop.background", "picture-uri"],
+-                stderr=subprocess.PIPE
++                stderr=subprocess.PIPE,
++                text=True,
+             )
+-            return output.decode('utf-8').strip().replace('file://', '').replace("'", "")
+-        except subprocess.CalledProcessError as e:
++            return normalize_wallpaper_path(output)
++        except (FileNotFoundError, subprocess.CalledProcessError) as e:
+             app.logger.error("Error: %s", e)
+             return None
+ 
+@@ -1197,6 +1266,35 @@
+ 
+ @app.route("/setup/change_wallpaper", methods=['POST'])
+ def change_wallpaper():
++    import subprocess
++
++    def xfce_wallpaper_properties() -> List[str]:
++        try:
++            output = subprocess.check_output(
++                ["xfconf-query", "-c", "xfce4-desktop", "-l"],
++                stderr=subprocess.PIPE,
++                text=True,
++            )
++        except (FileNotFoundError, subprocess.CalledProcessError):
++            return []
++        return [prop.strip() for prop in output.splitlines() if prop.strip().endswith("/last-image")]
++
++    def set_wallpaper_xfce(wallpaper_path: Path) -> bool:
++        props = xfce_wallpaper_properties()
++        if not props:
++            return False
++        for prop in props:
++            subprocess.run(
++                ["xfconf-query", "-c", "xfce4-desktop", "-p", prop, "-s", str(wallpaper_path)],
++                check=True,
++            )
++            prop_prefix = prop.rsplit("/", 1)[0]
++            subprocess.run(
++                ["xfconf-query", "-c", "xfce4-desktop", "-p", f"{prop_prefix}/image-style", "-n", "-t", "int", "-s", "5"],
++                check=False,
++            )
++        return True
++
+     data = request.json
+     path = data.get('path', None)
+ 
+@@ -1214,8 +1312,11 @@
+             import ctypes
+             ctypes.windll.user32.SystemParametersInfoW(20, 0, str(path), 3)
+         elif user_platform == "Linux":
+-            import subprocess
+-            subprocess.run(["gsettings", "set", "org.gnome.desktop.background", "picture-uri", f"file://{path}"])
++            if not set_wallpaper_xfce(path):
++                subprocess.run(
++                    ["gsettings", "set", "org.gnome.desktop.background", "picture-uri", f"file://{path}"],
++                    check=True,
++                )
+         elif user_platform == "Darwin":  # (Mac OS)
+             import subprocess
+             subprocess.run(

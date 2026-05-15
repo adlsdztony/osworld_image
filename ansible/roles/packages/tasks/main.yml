@@ -38,7 +38,6 @@
       - python3-dev
       - python3-pip
       - python3-venv
-      - snapd
       - tar
       - unzip
       - xdg-utils
@@ -47,6 +46,15 @@
     update_cache: false
   environment:
     DEBIAN_FRONTEND: noninteractive
+
+- name: Install snapd for VM targets
+  ansible.builtin.apt:
+    name: snapd
+    state: present
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  when: target_platform | default('') != 'docker'
 
 - name: Install AppImage FUSE compatibility package when available
   ansible.builtin.shell: |
@@ -72,6 +80,7 @@
     name: snapd.socket
     enabled: true
     state: started
+  when: target_platform | default('') != 'docker'
 
 - name: Download pinned deb packages
   ansible.builtin.get_url:
@@ -117,6 +126,7 @@
   loop: "{{ snap_packages }}"
   loop_control:
     label: "{{ item.name }}"
+  when: target_platform | default('') != 'docker'
 
 - name: Verify snap package versions
   ansible.builtin.shell: "set -euo pipefail; snap list {{ item.name }} | awk 'NR==2 {print $2}'"
@@ -128,6 +138,7 @@
   loop: "{{ snap_packages }}"
   loop_control:
     label: "{{ item.name }}"
+  when: target_platform | default('') != 'docker'
 
 - name: Download pinned AppImages
   ansible.builtin.get_url:

@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OSWORLD_USER="${OSWORLD_USER:-user}"
+
+wrap_electron_binary() {
+  local candidate="$1"
+  [ -e "$candidate" ] || return 0
+
+  local target="$candidate"
+  if [ -L "$target" ]; then
+    target="$(readlink -f "$target")"
+  fi
+
+  [ -f "$target" ] && [ -x "$target" ] || return 0
+  case "$target" in
+    *.real) return 0 ;;
+  esac
+  [ ! -e "${target}.real" ] || return 0
+
+  mv "$target" "${target}.real"
+  cat > "$target" <<EOF
+#!/usr/bin/env bash
+exec "${target}.real" --no-sandbox --disable-dev-shm-usage "\$@"
+EOF
+  chmod 0755 "$target"
+}
+
+for candidate in \
+  /usr/bin/obsidian \
+  /opt/Obsidian/obsidian \
+  /usr/bin/xmind \
+  /usr/bin/Xmind \
+  /opt/Xmind/xmind \
+  /opt/Xmind/Xmind \
+  /opt/xmind/xmind \
+  /opt/xmind/Xmind; do
+  wrap_electron_binary "$candidate"
+done
+
+while IFS= read -r -d '' candidate; do
+  wrap_electron_binary "$candidate"
+done < <(find /opt /usr/bin -maxdepth 5 -type f -perm -111 \( -iname 'obsidian' -o -iname 'xmind' \) -print0 2>/dev/null || true)
+
+if command -v google-chrome-stable >/dev/null 2>&1; then
+  update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/bin/google-chrome-stable 200
+  update-alternatives --set x-www-browser /usr/bin/google-chrome-stable
+  update-alternatives --install /usr/bin/gnome-www-browser gnome-www-browser /usr/bin/google-chrome-stable 200
+  update-alternatives --set gnome-www-browser /usr/bin/google-chrome-stable
+
+  install -d -m 0755 /etc/xdg
+  cat > /etc/xdg/mimeapps.list <<'EOF'
+[Default Applications]
+text/html=google-chrome.desktop
+x-scheme-handler/http=google-chrome.desktop
+x-scheme-handler/https=google-chrome.desktop
+x-scheme-handler/about=google-chrome.desktop
+x-scheme-handler/unknown=google-chrome.desktop
+EOF
+
+  if id "$OSWORLD_USER" >/dev/null 2>&1; then
+    user_home="$(getent passwd "$OSWORLD_USER" | awk -F: '{print $6}')"
+    user_uid="$(id -u "$OSWORLD_USER")"
+    user_gid="$(id -g "$OSWORLD_USER")"
+    install -d -m 0700 -o "$user_uid" -g "$user_gid" "$user_home/.config"
+    install -d -m 0755 -o "$user_uid" -g "$user_gid" "$user_home/.local" "$user_home/.local/share" "$user_home/.local/share/applications"
+    sudo -u "$OSWORLD_USER" env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" XDG_DATA_HOME="$user_home/.local/share" \
+      xdg-mime default google-chrome.desktop text/html x-scheme-handler/http x-scheme-handler/https x-scheme-handler/about x-scheme-handler/unknown
+    sudo -u "$OSWORLD_USER" env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" XDG_DATA_HOME="$user_home/.local/share" XDG_CURRENT_DESKTOP=XFCE \
+      xdg-settings set default-web-browser google-chrome.desktop || true
+  fi
+fi
+
+rm -f /etc/systemd/system/osworld.service /lib/systemd/system/osworld.service
+rm -f /run/dbus/pid /var/lib/dbus/machine-id
+touch /var/lib/dbus/machine-id
+install -d -m 0755 /var/log/supervisor /run/dbus
+install -d -m 1777 /tmp /var/tmp /tmp/.X11-unix /tmp/.ICE-unix
+
+if command -v update-desktop-database >/dev/null 2>&1; then
+  update-desktop-database /usr/share/applications || true
+fi
+
+find /var/log -type f -exec truncate -s 0 {} + 2>/dev/null || true
+rm -rf \
+  /root/.ansible \
+  /root/.cache \
+  /home/*/.ansible \
+  /home/*/.cache \
+  /home/*/.local/share/Trash \
+  /tmp/* \
+  /var/tmp/* \
+  /var/cache/apt/* \
+  /var/lib/apt/lists/* \
+  /var/log/journal

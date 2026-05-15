@@ -9,6 +9,8 @@
 - AWS AMI，基于 `ami-0d23263edb96951d8`
 - QEMU qcow2，基于 Hugging Face 上的 OSWorld qcow2
 - VMware Workstation VM，基于 Hugging Face 上的 OSWorld VMX
+- Docker XFCE 基础镜像，基于 OSWorld qcow2 rootfs
+- Docker XFCE 更新镜像，基于 Docker 基础镜像并应用同一套 Ansible delta
 
 更完整的操作说明见 [docs/usage.md](docs/usage.md)。
 
@@ -17,6 +19,7 @@
 ```text
 packer/      Packer builder 定义和变量
 ansible/     共享 provisioner playbook 与 roles
+docker/      Docker 基础镜像和更新镜像定义
 scripts/     下载、准备、构建验证和 smoke test 脚本
 tests/       镜像内 smoke check
 docs/        详细使用文档
@@ -33,6 +36,7 @@ build/       构建输出，git ignored
 - `aws` CLI 和有效 AWS 凭证
 - `qemu-system-x86_64`、`qemu-img`、KVM 权限
 - `virt-customize`，用于给 qcow2 base 准备 SSH
+- `docker`、`guestfish`、`qemu-img`，用于 Docker rootfs 迁移
 - VMware Workstation 和 `vmrun`，仅在需要完整 VMware 本地测试时使用
 
 敏感信息只通过环境变量或 ignored var 文件传入。不要把 AWS key、私有 SSH 密码、下载的镜像、构建产物或 `.pkrvars.hcl` 提交进仓库。OSWorld 的公开默认密码会直接写在配置里：AWS 使用 `osworld-public-evaluation`，本地 VM base 使用 `password`，QEMU/VMware 最终产物会把 `user` 重置为 `osworld-public-evaluation`。
@@ -128,6 +132,29 @@ VMware 产物也会把 `user` 密码重置为 `osworld-public-evaluation`。
 
 完整 VMware 本地 smoke test 需要 `vmrun`。如果当前机器没有 VMware Workstation 或 `vmrun`，只能验证 builder 配置，不能完成本地运行测试。
 
+## Docker 构建和验证
+
+Docker 流程分两层。基础层从 qcow2 导入 rootfs，移除 VM/GNOME/systemd 相关内容，安装 XFCE、supervisor 和 noVNC，并保留原 desktop user 与 server 布局。更新层基于该基础镜像，用 `target_platform=docker` 执行同一套 Ansible delta。
+
+构建并运行 Docker 基础镜像：
+
+```bash
+scripts/build-docker-base.sh
+scripts/run-docker-base.sh
+scripts/smoke-docker-base.sh
+```
+
+构建并运行 Docker 更新镜像：
+
+```bash
+scripts/build-docker-update.sh
+scripts/run-docker-update.sh
+scripts/smoke-docker-update.sh
+CONTAINER_NAME=osworld-xfce scripts/smoke-docker-base.sh
+```
+
+Docker 目标会刻意跳过 snapd/snap，因为镜像不运行 systemd。如果 Docker 中需要 Audacity，应新增 deb/AppImage 安装路径，而不是重新启用 snapd。
+
 ## 应用增量
 
 Ansible playbook 会安装或验证以下版本：
@@ -152,6 +179,7 @@ Ansible playbook 会安装或验证以下版本：
 - 常见 office MIME 类型默认使用 LibreOffice
 - WPS symbol fonts，并通过 checksum 和 `fc-list` 验证
 - QEMU 和 VMware 的 `user` 密码设置为 `osworld-public-evaluation`
+- Docker runtime 通过 supervisor 启动 DBus、Xvfb、XFCE、x11vnc/noVNC 和 OSWorld server
 
 ## Smoke Check
 

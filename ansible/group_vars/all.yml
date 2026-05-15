@@ -6,7 +6,7 @@ appimage_dir: /opt/osworld-appimages
 download_timeout_seconds: 300
 
 osworld_server_repo_url: https://github.com/adlsdztony/osworld-server.git
-osworld_server_commit: 8bb13c5315392e2500f9a27013285bbc375b2c3a
+osworld_server_commit: a6979eaf85ce22c281119d2b60e1f25da6dd68ec
 osworld_uv_version: "0.9.13"
 osworld_service_name: osworld.service
 osworld_server_host: 0.0.0.0

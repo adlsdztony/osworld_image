@@ -9,6 +9,8 @@ Supported build targets:
 - AWS AMI, derived from `ami-0d23263edb96951d8`
 - QEMU qcow2, derived from the OSWorld qcow2 on Hugging Face
 - VMware Workstation VM, derived from the OSWorld VMX on Hugging Face
+- Docker XFCE base image, derived from the OSWorld qcow2 rootfs
+- Docker XFCE update image, derived from the Docker base image and the same Ansible delta
 
 See [docs/usage.md](docs/usage.md) for more detailed usage notes.
 
@@ -17,6 +19,7 @@ See [docs/usage.md](docs/usage.md) for more detailed usage notes.
 ```text
 packer/      Packer builder definitions and variables
 ansible/     Shared provisioner playbook and roles
+docker/      Docker base and update image definitions
 scripts/     Download, preparation, verification, and smoke-test scripts
 tests/       In-image smoke checks
 docs/        Detailed usage documentation
@@ -33,6 +36,7 @@ The local machine needs:
 - `aws` CLI and valid AWS credentials
 - `qemu-system-x86_64`, `qemu-img`, and KVM access
 - `virt-customize`, used to prepare the qcow2 base for SSH
+- `docker`, `guestfish`, and `qemu-img` for Docker rootfs migration
 - VMware Workstation and `vmrun`, only for full local VMware testing
 
 Pass sensitive values only through environment variables or ignored local var files. Do not commit AWS keys, private SSH passwords, downloaded images, build artifacts, or `.pkrvars.hcl` files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local VM base images use `password`, and final QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`.
@@ -128,6 +132,29 @@ The VMware artifact also resets the `user` password to `osworld-public-evaluatio
 
 Full local VMware smoke testing requires `vmrun`. If VMware Workstation or `vmrun` is unavailable, only builder configuration validation can be completed locally.
 
+## Docker Build and Verification
+
+The Docker flow has two stages. The base stage imports the qcow2 rootfs, removes VM-only/GNOME/systemd pieces, installs XFCE plus supervisor/noVNC, and keeps the original desktop user and server layout. The update stage starts from that base and runs the same Ansible delta with `target_platform=docker`.
+
+Build and run the Docker base image:
+
+```bash
+scripts/build-docker-base.sh
+scripts/run-docker-base.sh
+scripts/smoke-docker-base.sh
+```
+
+Build and run the updated Docker image:
+
+```bash
+scripts/build-docker-update.sh
+scripts/run-docker-update.sh
+scripts/smoke-docker-update.sh
+CONTAINER_NAME=osworld-xfce scripts/smoke-docker-base.sh
+```
+
+Docker intentionally skips snapd/snap packages because the image does not run systemd. If Audacity is required in Docker, add a deb/AppImage-style install path instead of re-enabling snapd.
+
 ## Provisioned Delta
 
 The Ansible playbook installs or verifies these versions:
@@ -152,6 +179,7 @@ It also configures:
 - Common office MIME defaults to LibreOffice
 - WPS symbol fonts, verified by checksum and `fc-list`
 - QEMU and VMware `user` password set to `osworld-public-evaluation`
+- Docker runtime uses supervisor to start DBus, Xvfb, XFCE, x11vnc/noVNC, and the OSWorld server
 
 ## Smoke Checks
 

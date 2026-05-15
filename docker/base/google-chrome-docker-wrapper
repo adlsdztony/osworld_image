@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+real_chrome="/opt/google/chrome/google-chrome.real"
+if [ ! -x "$real_chrome" ]; then
+  printf 'Missing Chrome wrapper target: %s\n' "$real_chrome" >&2
+  exit 127
+fi
+
+args=("$@")
+
+has_arg() {
+  local needle="$1"
+  local arg
+  for arg in "${args[@]}"; do
+    if [ "$arg" = "$needle" ]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
+has_arg --test-type || args=(--test-type "${args[@]}")
+has_arg --no-sandbox || args=(--no-sandbox "${args[@]}")
+has_arg --disable-dev-shm-usage || args=(--disable-dev-shm-usage "${args[@]}")
+
+exec "$real_chrome" "${args[@]}"

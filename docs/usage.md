@@ -18,7 +18,7 @@ The OSWorld server source is pinned to:
 
 ```text
 https://github.com/adlsdztony/osworld-server.git
-8bb13c5315392e2500f9a27013285bbc375b2c3a
+a6979eaf85ce22c281119d2b60e1f25da6dd68ec
 ```
 
 ## Base Images
@@ -100,6 +100,28 @@ packer build -only=vmware.vmware-vmx.osworld packer
 The local VM builder defaults to the public source-VM password `password`. The VMware artifact also resets `user` to `osworld-public-evaluation`.
 
 Full VMware testing requires VMware Workstation and `vmrun`.
+
+## Docker XFCE Images
+
+Docker builds are layered:
+
+1. `scripts/build-docker-base.sh` exports the qcow2 rootfs with `guestfish`, imports it as `osworld-rootfs-raw:latest`, removes GNOME/systemd-heavy VM pieces, installs XFCE plus supervisor/noVNC, and writes `osworld-base-xfce:latest`.
+2. `scripts/build-docker-update.sh` builds `osworld-xfce:latest` from `osworld-base-xfce:latest`, runs `ansible/playbook.yml` locally with `target_platform=docker`, and flattens the result.
+
+Build and smoke test:
+
+```bash
+scripts/build-docker-base.sh
+scripts/run-docker-base.sh
+scripts/smoke-docker-base.sh
+
+scripts/build-docker-update.sh
+scripts/run-docker-update.sh
+scripts/smoke-docker-update.sh
+CONTAINER_NAME=osworld-xfce scripts/smoke-docker-base.sh
+```
+
+Docker does not run systemd, so Ansible tasks guarded by `target_platform=docker` skip snapd, snap packages, and the OSWorld systemd unit. The runtime starts the server through supervisor instead. Keep VM behavior intact when adding Docker guards.
 
 ## Software Delta
 

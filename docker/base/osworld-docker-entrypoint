@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OSWORLD_USER="${OSWORLD_USER:-user}"
+OSWORLD_HOME="$(getent passwd "$OSWORLD_USER" | awk -F: '{print $6}')"
+OSWORLD_UID="$(id -u "$OSWORLD_USER")"
+OSWORLD_GID="$(id -g "$OSWORLD_USER")"
+OSWORLD_RUNTIME_DIR="/run/user/$OSWORLD_UID"
+
+export OSWORLD_USER OSWORLD_HOME OSWORLD_UID OSWORLD_GID
+export HOME="$OSWORLD_HOME"
+export USER="$OSWORLD_USER"
+export LOGNAME="$OSWORLD_USER"
+export XDG_RUNTIME_DIR="$OSWORLD_RUNTIME_DIR"
+export XDG_CACHE_HOME="$OSWORLD_HOME/.cache"
+export XDG_CONFIG_HOME="$OSWORLD_HOME/.config"
+export XDG_DATA_HOME="$OSWORLD_HOME/.local/share"
+export XAUTHORITY="$OSWORLD_HOME/.Xauthority"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$OSWORLD_RUNTIME_DIR/bus"
+export DISPLAY="${DISPLAY:-:0}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-x11}"
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+export SCREEN_GEOMETRY="${SCREEN_GEOMETRY:-1920x1080x24}"
+
+install -d -m 0755 /run/dbus
+install -d -m 1777 /tmp /tmp/.X11-unix
+install -d -m 1777 /tmp/.ICE-unix
+install -d -m 0700 -o "$OSWORLD_UID" -g "$OSWORLD_GID" "$OSWORLD_RUNTIME_DIR"
+install -d -m 0700 -o "$OSWORLD_UID" -g "$OSWORLD_GID" "$XDG_CACHE_HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME"
+install -d -m 0755 /var/log/supervisor
+touch "$XAUTHORITY"
+chown "$OSWORLD_UID:$OSWORLD_GID" "$XAUTHORITY"
+chmod 0600 "$XAUTHORITY"
+
+rm -f /run/dbus/pid "$OSWORLD_RUNTIME_DIR/bus" "$OSWORLD_RUNTIME_DIR/at-spi-bus"/* /tmp/.X*-lock
+if ! dbus-uuidgen --get >/dev/null 2>&1; then
+  rm -f /etc/machine-id /var/lib/dbus/machine-id
+  dbus-uuidgen --ensure=/etc/machine-id
+fi
+install -m 0644 /etc/machine-id /var/lib/dbus/machine-id
+
+if [ -d /usr/share/novnc ] && [ ! -e /usr/share/novnc/index.html ] && [ -e /usr/share/novnc/vnc.html ]; then
+  ln -s vnc.html /usr/share/novnc/index.html
+fi
+
+exec "$@"

@@ -164,7 +164,7 @@ for candidate in "$OSWORLD_HOME/server" "$OSWORLD_HOME/osworld/server" /opt/oswo
 done
 [[ -n "$server_marker" ]] || fail "OSWorld server commit marker missing"
 server_commit="$(cat "$server_marker")"
-[[ "$server_commit" == "8bb13c5315392e2500f9a27013285bbc375b2c3a" ]] || fail "OSWorld server commit marker mismatch"
+[[ "$server_commit" == "a6979eaf85ce22c281119d2b60e1f25da6dd68ec" ]] || fail "OSWorld server commit marker mismatch"
 
 systemctl is-active --quiet osworld.service || fail "osworld.service is not active"
 ss -ltn | awk '$4 ~ /:5000$/ { found=1 } END { exit found ? 0 : 1 }' \

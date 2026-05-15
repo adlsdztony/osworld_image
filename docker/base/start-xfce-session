@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OSWORLD_USER="${OSWORLD_USER:-user}"
+OSWORLD_HOME="${OSWORLD_HOME:-$(getent passwd "$OSWORLD_USER" | awk -F: '{print $6}')}"
+OSWORLD_UID="${OSWORLD_UID:-$(id -u "$OSWORLD_USER")}"
+
+export HOME="$OSWORLD_HOME"
+export USER="$OSWORLD_USER"
+export LOGNAME="$OSWORLD_USER"
+export DISPLAY="${DISPLAY:-:0}"
+export XDG_SESSION_TYPE="${XDG_SESSION_TYPE:-x11}"
+export GDK_BACKEND="${GDK_BACKEND:-x11}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$OSWORLD_UID}"
+export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=$XDG_RUNTIME_DIR/bus}"
+
+for _ in $(seq 1 60); do
+  if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 1
+done
+
+xfconf-query -c xfce4-session -p /general/SaveOnExit -n -t bool -s false >/dev/null 2>&1 || true
+exec xfce4-session

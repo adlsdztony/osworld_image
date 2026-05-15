@@ -103,6 +103,7 @@
 
       [Install]
       WantedBy=multi-user.target
+  when: target_platform | default('') != 'docker'
 
 - name: Enable and restart OSWorld service
   ansible.builtin.systemd:
@@ -110,15 +111,18 @@
     enabled: true
     state: restarted
     daemon_reload: true
+  when: target_platform | default('') != 'docker'
 
 - name: Wait for OSWorld server port
   ansible.builtin.wait_for:
     host: 127.0.0.1
     port: "{{ osworld_server_port }}"
     timeout: 30
+  when: target_platform | default('') != 'docker'
 
 - name: Verify OSWorld service is active
   ansible.builtin.command: "systemctl is-active {{ osworld_service_name }}"
   register: osworld_service_state
   changed_when: false
   failed_when: osworld_service_state.stdout != "active"
+  when: target_platform | default('') != 'docker'

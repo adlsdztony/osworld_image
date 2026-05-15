@@ -194,6 +194,7 @@
     executable: /bin/bash
   register: audacity_snap_revision
   changed_when: false
+  when: target_platform | default('') != 'docker'
 
 - name: Create Audacity first-run config directories
   ansible.builtin.file:
@@ -202,6 +203,7 @@
     owner: "{{ effective_osworld_user }}"
     group: "{{ effective_osworld_user }}"
     mode: "0755"
+  when: target_platform | default('') != 'docker'
 
 - name: Link Audacity current snap revision
   ansible.builtin.file:
@@ -211,6 +213,7 @@
     owner: "{{ effective_osworld_user }}"
     group: "{{ effective_osworld_user }}"
     force: true
+  when: target_platform | default('') != 'docker'
 
 - name: Disable Audacity first-run intro and splash
   ansible.builtin.copy:
@@ -233,6 +236,7 @@
       Micro=5
       [Directories]
       TempDir=/tmp/audacity-user
+  when: target_platform | default('') != 'docker'
 
 - name: Initialize Audacity plugin settings file
   ansible.builtin.copy:
@@ -242,3 +246,4 @@
     mode: "0644"
     content: |
       pluginsettingsversion=1.0
+  when: target_platform | default('') != 'docker'

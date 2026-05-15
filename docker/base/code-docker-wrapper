@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+real_code="/usr/share/code/bin/code"
+if [ ! -x "$real_code" ]; then
+  printf 'Missing VS Code CLI target: %s\n' "$real_code" >&2
+  exit 127
+fi
+
+args=("$@")
+
+for arg in "${args[@]}"; do
+  if [ "$arg" = "--no-sandbox" ]; then
+    exec "$real_code" "${args[@]}"
+  fi
+done
+
+exec "$real_code" --no-sandbox "${args[@]}"
