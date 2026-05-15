@@ -136,6 +136,12 @@ declare -A mime_defaults=(
   [application/vnd.oasis.opendocument.text]=libreoffice-writer.desktop
   [application/vnd.oasis.opendocument.spreadsheet]=libreoffice-calc.desktop
   [application/vnd.oasis.opendocument.presentation]=libreoffice-impress.desktop
+  [application/wps-office.doc]=libreoffice-writer.desktop
+  [application/wps-office.docx]=libreoffice-writer.desktop
+  [application/wps-office.xls]=libreoffice-calc.desktop
+  [application/wps-office.xlsx]=libreoffice-calc.desktop
+  [application/wps-office.ppt]=libreoffice-impress.desktop
+  [application/wps-office.pptx]=libreoffice-impress.desktop
 )
 
 for mime in "${!mime_defaults[@]}"; do
