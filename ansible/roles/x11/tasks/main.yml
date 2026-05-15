@@ -1,0 +1,23 @@
+- name: Install Xorg MaxClients updater
+  ansible.builtin.copy:
+    src: ensure-xorg-maxclients.sh
+    dest: /usr/local/sbin/ensure-xorg-maxclients
+    mode: "0755"
+
+- name: Ensure Xorg MaxClients is set to 2048
+  ansible.builtin.command: /usr/local/sbin/ensure-xorg-maxclients /etc/X11/xorg.conf
+  changed_when: true
+
+- name: Verify Xorg MaxClients setting
+  ansible.builtin.shell: |
+    set -euo pipefail
+    awk '
+      tolower($0) ~ /^[[:space:]]*section[[:space:]]+"serverflags"/ { insec=1 }
+      insec && tolower($0) ~ /^[[:space:]]*option[[:space:]]+"maxclients"[[:space:]]+"2048"/ { found=1 }
+      insec && tolower($0) ~ /^[[:space:]]*endsection/ { insec=0 }
+      END { exit found ? 0 : 1 }
+    ' /etc/X11/xorg.conf
+  args:
+    executable: /bin/bash
+  changed_when: false
+

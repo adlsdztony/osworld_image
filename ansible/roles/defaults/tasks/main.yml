@@ -1,0 +1,41 @@
+- name: Set LibreOffice defaults for office MIME types
+  ansible.builtin.command: "runuser -u {{ effective_osworld_user }} -- xdg-mime default {{ item.value }} {{ item.key }}"
+  environment:
+    HOME: "{{ effective_osworld_home }}"
+  loop: "{{ libreoffice_mime_defaults | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: true
+
+- name: Preserve PDF default unless it is already LibreOffice
+  ansible.builtin.shell: |
+    set -euo pipefail
+    current="$(runuser -u "{{ effective_osworld_user }}" -- xdg-mime query default application/pdf || true)"
+    case "$current" in
+      libreoffice*.desktop)
+        runuser -u "{{ effective_osworld_user }}" -- xdg-mime default libreoffice-draw.desktop application/pdf
+        ;;
+      *)
+        printf 'Preserving PDF default: %s\n' "$current"
+        ;;
+    esac
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ effective_osworld_home }}"
+  changed_when: true
+
+- name: Verify LibreOffice MIME defaults
+  ansible.builtin.shell: |
+    set -euo pipefail
+    actual="$(runuser -u "{{ effective_osworld_user }}" -- xdg-mime query default "{{ item.key }}")"
+    test "$actual" = "{{ item.value }}"
+  args:
+    executable: /bin/bash
+  environment:
+    HOME: "{{ effective_osworld_home }}"
+  loop: "{{ libreoffice_mime_defaults | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+  changed_when: false
+

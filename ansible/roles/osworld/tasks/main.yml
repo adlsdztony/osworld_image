@@ -1,0 +1,53 @@
+- name: Check candidate OSWorld server paths
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: osworld_server_candidate_stats
+  loop: "{{ osworld_server_dest_candidates }}"
+
+- name: Select OSWorld server destination
+  ansible.builtin.set_fact:
+    osworld_server_dest: >-
+      {{
+        (
+          osworld_server_candidate_stats.results
+          | selectattr('stat.exists')
+          | map(attribute='item')
+          | list
+          | first
+        )
+        | default(osworld_server_dest_candidates[0], true)
+      }}
+
+- name: Ensure OSWorld server parent exists
+  ansible.builtin.file:
+    path: "{{ osworld_server_dest | dirname }}"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+
+- name: Clone pinned OSWorld server source
+  ansible.builtin.git:
+    repo: "{{ osworld_server_repo_url }}"
+    dest: /opt/osworld-server-src
+    version: "{{ osworld_server_commit }}"
+    force: true
+
+- name: Replace OSWorld server directory from pinned source
+  ansible.builtin.shell: |
+    set -euo pipefail
+    dest="{{ osworld_server_dest }}"
+    mkdir -p "$dest"
+    find "$dest" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -a /opt/osworld-server-src/. "$dest/"
+    printf '%s\n' "{{ osworld_server_commit }}" > "$dest/.osworld-server-commit"
+    chown -R "{{ effective_osworld_user }}:{{ effective_osworld_user }}" "$dest"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Verify OSWorld server commit marker
+  ansible.builtin.command: "cat {{ osworld_server_dest }}/.osworld-server-commit"
+  register: osworld_server_marker
+  changed_when: false
+  failed_when: osworld_server_marker.stdout != osworld_server_commit

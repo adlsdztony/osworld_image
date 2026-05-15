@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+OSWORLD_USER="${OSWORLD_USER:-user}"
+OSWORLD_HOME="$(getent passwd "$OSWORLD_USER" | awk -F: '{print $6}')"
+APPIMAGE_DIR="${APPIMAGE_DIR:-/opt/osworld-appimages}"
+
+fail() {
+  printf 'FAIL: %s\n' "$*" >&2
+  exit 1
+}
+
+assert_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local label="$3"
+  [[ "$haystack" == *"$needle"* ]] || fail "$label expected to contain '$needle', got '$haystack'"
+}
+
+assert_file_sha256() {
+  local path="$1"
+  local expected="$2"
+  local actual
+  actual="$(sha256sum "$path" | awk '{print $1}')"
+  [[ "$actual" == "$expected" ]] || fail "$path sha256 expected $expected, got $actual"
+}
+
+assert_dpkg_version() {
+  local package="$1"
+  local expected="$2"
+  local version
+  version="$(dpkg-query -W -f='${Version}' "$package")"
+  assert_contains "$version" "$expected" "$package version"
+}
+
+assert_dpkg_version obsidian "1.10.6"
+assert_dpkg_version xmind-vana "26.1.3145"
+assert_dpkg_version wps-office "11.1.0.11723"
+
+audacity_version="$(snap list audacity | awk 'NR==2 {print $2}')"
+[[ "$audacity_version" == "3.7.5" ]] || fail "audacity snap version expected 3.7.5, got $audacity_version"
+
+assert_file_sha256 "$APPIMAGE_DIR/shotcut-26.2.26.AppImage" "837e0306fa970e2f2627317859c10b83a3f4728e5cd1918995d29e5284b34415"
+grep -q '^version=26.2.26$' "$APPIMAGE_DIR/shotcut.version" || fail "Shotcut version manifest missing 26.2.26"
+
+assert_file_sha256 "$APPIMAGE_DIR/labplot-2.12.1-x86_64.AppImage" "1b700d60b3297a987022cfc532e413b8211ef917059a21155d8b5604f3012a82"
+grep -q '^version=2.12.1$' "$APPIMAGE_DIR/labplot.version" || fail "LabPlot version manifest missing 2.12.1"
+
+assert_file_sha256 "$APPIMAGE_DIR/MuseScore-Studio-4.6.0.252730944-x86_64.AppImage" "8b6570311a245495c0d93541a3737e4ca118a1450337655e06b3fd8d18527483"
+grep -q '^version=4.6$' "$APPIMAGE_DIR/musescore.version" || fail "MuseScore version manifest missing 4.6"
+
+blender_version="$(/usr/local/bin/blender --version | head -n 1)"
+assert_contains "$blender_version" "Blender 5.0.0" "Blender version"
+
+zotero_version="$(awk -F= '/^Version=/ {print $2}' /opt/zotero-8.0.2/Zotero_linux-x86_64/app/application.ini)"
+[[ "$zotero_version" == "8.0.2" ]] || fail "Zotero version expected 8.0.2, got $zotero_version"
+
+grep -q '^version=7.64$' "$OSWORLD_HOME/opt/REAPER/.osworld-version" || fail "REAPER version manifest missing 7.64"
+test -x "$OSWORLD_HOME/opt/REAPER/reaper" || fail "REAPER binary missing"
+
+jq -e '.SafeBrowsingProtectionLevel == 0 and .SafeBrowsingEnabled == false' \
+  /etc/opt/chrome/policies/managed/osworld-safe-browsing.json >/dev/null \
+  || fail "Chrome Safe Browsing policy is not no-protection"
+
+grep -R 'extensions.zotero.httpServer.enabled", true' "$OSWORLD_HOME/.zotero/zotero" >/dev/null \
+  || fail "Zotero httpServer.enabled preference missing"
+grep -R 'extensions.zotero.httpServer.localAPI.enabled", true' "$OSWORLD_HOME/.zotero/zotero" >/dev/null \
+  || fail "Zotero localAPI.enabled preference missing"
+
+awk '
+  tolower($0) ~ /^[[:space:]]*section[[:space:]]+"serverflags"/ { insec=1 }
+  insec && tolower($0) ~ /^[[:space:]]*option[[:space:]]+"maxclients"[[:space:]]+"2048"/ { found=1 }
+  insec && tolower($0) ~ /^[[:space:]]*endsection/ { insec=0 }
+  END { exit found ? 0 : 1 }
+' /etc/X11/xorg.conf || fail "Xorg MaxClients 2048 missing"
+
+declare -A mime_defaults=(
+  [application/msword]=libreoffice-writer.desktop
+  [application/vnd.openxmlformats-officedocument.wordprocessingml.document]=libreoffice-writer.desktop
+  [application/vnd.ms-excel]=libreoffice-calc.desktop
+  [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]=libreoffice-calc.desktop
+  [application/vnd.ms-powerpoint]=libreoffice-impress.desktop
+  [application/vnd.openxmlformats-officedocument.presentationml.presentation]=libreoffice-impress.desktop
+  [application/vnd.oasis.opendocument.text]=libreoffice-writer.desktop
+  [application/vnd.oasis.opendocument.spreadsheet]=libreoffice-calc.desktop
+  [application/vnd.oasis.opendocument.presentation]=libreoffice-impress.desktop
+)
+
+for mime in "${!mime_defaults[@]}"; do
+  actual="$(runuser -u "$OSWORLD_USER" -- xdg-mime query default "$mime")"
+  [[ "$actual" == "${mime_defaults[$mime]}" ]] || fail "$mime default expected ${mime_defaults[$mime]}, got $actual"
+done
+
+fc-list | awk 'BEGIN { IGNORECASE=1 } /Wingdings|Webdings|MT Extra|Symbol/ { found=1 } END { exit found ? 0 : 1 }' \
+  || fail "WPS symbol fonts not visible to fc-list"
+
+server_marker=""
+for candidate in "$OSWORLD_HOME/server" "$OSWORLD_HOME/osworld/server" /opt/osworld/server /server; do
+  if [ -f "$candidate/.osworld-server-commit" ]; then
+    server_marker="$candidate/.osworld-server-commit"
+    break
+  fi
+done
+[[ -n "$server_marker" ]] || fail "OSWorld server commit marker missing"
+server_commit="$(cat "$server_marker")"
+[[ "$server_commit" == "8bb13c5315392e2500f9a27013285bbc375b2c3a" ]] || fail "OSWorld server commit marker mismatch"
+
+printf 'Smoke checks passed for user %s\n' "$OSWORLD_USER"

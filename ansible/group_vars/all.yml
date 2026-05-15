@@ -1,0 +1,100 @@
+default_osworld_user: user
+
+artifact_cache_dir: /var/cache/osworld-delta
+appimage_dir: /opt/osworld-appimages
+download_timeout_seconds: 300
+
+osworld_server_repo_url: https://github.com/adlsdztony/osworld-server.git
+osworld_server_commit: 8bb13c5315392e2500f9a27013285bbc375b2c3a
+osworld_server_dest_candidates:
+  - "{{ effective_osworld_home }}/server"
+  - "{{ effective_osworld_home }}/osworld/server"
+  - /opt/osworld/server
+  - /server
+
+deb_packages:
+  - name: obsidian
+    package: obsidian
+    version_assert: "1.10.6"
+    url: "https://github.com/obsidianmd/obsidian-releases/releases/download/v1.10.6/obsidian_1.10.6_amd64.deb"
+    checksum: "sha256:7e2fcf3fa6da54715d88a17ac906c87ca397c9d1e15ac6a0f6ba74f097a749d6"
+    filename: "obsidian_1.10.6_amd64.deb"
+  - name: xmind
+    package: xmind-vana
+    version_assert: "26.1.3145"
+    url: "https://dl3.xmind.net/Xmind-for-Linux-amd64bit-26.01.03145-202510170359.deb"
+    checksum: "sha256:87bab10dfdb5f7eb7ca0093c20006ceccc9ab0d7772bf3c033a6bbf64c9a2ddc"
+    filename: "Xmind-for-Linux-amd64bit-26.01.03145-202510170359.deb"
+  - name: wps-office
+    package: wps-office
+    version_assert: "11.1.0.11723"
+    url: "https://wdl1.pcfg.cache.wpscdn.com/wpsdl/wpsoffice/download/linux/11723/wps-office_11.1.0.11723.XA_amd64.deb"
+    checksum: "sha256:fe6326210f69d94efdbf2728914d293036be391b93a614f58cd0e1ff1d4923b3"
+    filename: "wps-office_11.1.0.11723.XA_amd64.deb"
+
+snap_packages:
+  - name: audacity
+    classic: false
+    expected_version: "3.7.5"
+
+appimages:
+  - name: shotcut
+    display_name: Shotcut
+    version: "26.2.26"
+    url: "https://downloads.sourceforge.net/project/shotcut/v26.2.26/shotcut-linux-x86_64-26.2.26.AppImage"
+    checksum: "sha256:837e0306fa970e2f2627317859c10b83a3f4728e5cd1918995d29e5284b34415"
+    filename: "shotcut-26.2.26.AppImage"
+    categories: "AudioVideo;Video;AudioVideoEditing;"
+  - name: labplot
+    display_name: LabPlot
+    version: "2.12.1"
+    url: "https://download.kde.org/stable/labplot/labplot-2.12.1-x86_64.AppImage"
+    checksum: "sha256:1b700d60b3297a987022cfc532e413b8211ef917059a21155d8b5604f3012a82"
+    filename: "labplot-2.12.1-x86_64.AppImage"
+    categories: "Education;Science;Math;"
+    validate_certs: false
+  - name: musescore
+    display_name: "MuseScore Studio"
+    version: "4.6"
+    url: "https://github.com/musescore/MuseScore/releases/download/v4.6.0/MuseScore-Studio-4.6.0.252730944-x86_64.AppImage"
+    checksum: "sha256:8b6570311a245495c0d93541a3737e4ca118a1450337655e06b3fd8d18527483"
+    filename: "MuseScore-Studio-4.6.0.252730944-x86_64.AppImage"
+    categories: "Audio;Music;Education;"
+
+blender:
+  version: "5.0.0"
+  url: "https://download.blender.org/release/Blender5.0/blender-5.0.0-linux-x64.tar.xz"
+  checksum: "sha256:9de96e81432afba9c0a715c7233f1eff616705b75226dc5d0fa2708ddfb0e525"
+  filename: "blender-5.0.0-linux-x64.tar.xz"
+  install_dir: /opt/blender-5.0.0-linux-x64
+
+zotero:
+  version: "8.0.2"
+  url: "https://download.zotero.org/client/release/8.0.2/Zotero-8.0.2_linux-x86_64.tar.xz"
+  checksum: "sha256:846c79f1c3c54706c29229a12b7a237f080613c1752f0734ad84c92e4ae9f170"
+  filename: "Zotero-8.0.2_linux-x86_64.tar.xz"
+  install_dir: /opt/zotero-8.0.2
+
+reaper:
+  version: "7.64"
+  url: "https://dlcf.reaper.fm/7.x/reaper764_linux_x86_64.tar.xz"
+  checksum: "sha256:9b0da6fe54cc0db835812da0f7df1e35b028f716f7199e3322f31144d0f3f399"
+  filename: "reaper764_linux_x86_64.tar.xz"
+
+wps_fonts:
+  source_url: "https://gitee.com/owlman/wps_fonts/repository/archive/89beda2cf241c4524a5926bf13c92bdc8a73e9d0.zip"
+  local_src: "{{ playbook_dir }}/../downloads/wps_fonts/wps_symbol_fonts.zip"
+  symbol_zip: "wps_symbol_fonts.zip"
+  symbol_zip_checksum: "sha256:01e965dc81167ae816b3bbd7076986bf2fb64a2c456a077df677f8882dabcbe2"
+  font_dir: /usr/share/fonts/wps-office
+
+libreoffice_mime_defaults:
+  application/msword: libreoffice-writer.desktop
+  application/vnd.openxmlformats-officedocument.wordprocessingml.document: libreoffice-writer.desktop
+  application/vnd.ms-excel: libreoffice-calc.desktop
+  application/vnd.openxmlformats-officedocument.spreadsheetml.sheet: libreoffice-calc.desktop
+  application/vnd.ms-powerpoint: libreoffice-impress.desktop
+  application/vnd.openxmlformats-officedocument.presentationml.presentation: libreoffice-impress.desktop
+  application/vnd.oasis.opendocument.text: libreoffice-writer.desktop
+  application/vnd.oasis.opendocument.spreadsheet: libreoffice-calc.desktop
+  application/vnd.oasis.opendocument.presentation: libreoffice-impress.desktop

@@ -1,0 +1,19 @@
+- name: Install Zotero preference configurator
+  ansible.builtin.copy:
+    src: configure-zotero-prefs.sh
+    dest: /usr/local/sbin/configure-zotero-prefs
+    mode: "0755"
+
+- name: Enable Zotero local communication settings
+  ansible.builtin.command: "/usr/local/sbin/configure-zotero-prefs {{ effective_osworld_user }} {{ effective_osworld_home }}"
+  changed_when: true
+
+- name: Verify Zotero HTTP server preference
+  ansible.builtin.shell: |
+    set -euo pipefail
+    grep -R 'extensions.zotero.httpServer.enabled", true' "{{ effective_osworld_home }}/.zotero/zotero"
+    grep -R 'extensions.zotero.httpServer.localAPI.enabled", true' "{{ effective_osworld_home }}/.zotero/zotero"
+  args:
+    executable: /bin/bash
+  changed_when: false
+

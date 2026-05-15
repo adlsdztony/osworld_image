@@ -1,0 +1,32 @@
+- name: Apply deterministic OSWorld image delta
+  hosts: all
+  become: true
+  gather_facts: true
+  vars_files:
+    - group_vars/all.yml
+  pre_tasks:
+    - name: Resolve target OSWorld user
+      ansible.builtin.set_fact:
+        effective_osworld_user: "{{ osworld_user | default(default_osworld_user) }}"
+
+    - name: Verify target OSWorld user exists
+      ansible.builtin.command: "getent passwd {{ effective_osworld_user }}"
+      changed_when: false
+
+    - name: Resolve target OSWorld home
+      ansible.builtin.command: "getent passwd {{ effective_osworld_user }}"
+      register: osworld_passwd
+      changed_when: false
+
+    - name: Set target OSWorld home
+      ansible.builtin.set_fact:
+        effective_osworld_home: "{{ osworld_passwd.stdout.split(':')[5] }}"
+
+  roles:
+    - packages
+    - chrome
+    - zotero
+    - osworld
+    - x11
+    - defaults
+

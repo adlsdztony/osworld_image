@@ -1,0 +1,379 @@
+- name: Create artifact cache
+  ansible.builtin.file:
+    path: "{{ artifact_cache_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Create AppImage directory
+  ansible.builtin.file:
+    path: "{{ appimage_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Refresh apt cache with diagnostics
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export DEBIAN_FRONTEND=noninteractive
+    for lock in /var/lib/dpkg/lock-frontend /var/lib/dpkg/lock /var/cache/apt/archives/lock /var/lib/apt/lists/lock; do
+      while fuser "$lock" >/dev/null 2>&1; do
+        sleep 5
+      done
+    done
+    apt-get -o Acquire::Retries=5 update
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Install deterministic provisioning prerequisites
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - desktop-file-utils
+      - fontconfig
+      - git
+      - jq
+      - snapd
+      - tar
+      - unzip
+      - xdg-utils
+      - xz-utils
+    state: present
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Install AppImage FUSE compatibility package when available
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if dpkg-query -W -f='${Status}' libfuse2 2>/dev/null | grep -q 'install ok installed'; then
+      exit 0
+    fi
+    if dpkg-query -W -f='${Status}' libfuse2t64 2>/dev/null | grep -q 'install ok installed'; then
+      exit 0
+    fi
+    apt-get update
+    if apt-cache show libfuse2t64 >/dev/null 2>&1; then
+      DEBIAN_FRONTEND=noninteractive apt-get install -y libfuse2t64
+    else
+      DEBIAN_FRONTEND=noninteractive apt-get install -y libfuse2
+    fi
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Ensure snapd socket is running
+  ansible.builtin.systemd:
+    name: snapd.socket
+    enabled: true
+    state: started
+
+- name: Download pinned deb packages
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "{{ artifact_cache_dir }}/{{ item.filename }}"
+    checksum: "{{ item.checksum }}"
+    timeout: "{{ download_timeout_seconds }}"
+    mode: "0644"
+  register: deb_download
+  retries: 3
+  delay: 10
+  until: deb_download is succeeded
+  loop: "{{ deb_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install pinned deb packages
+  ansible.builtin.apt:
+    deb: "{{ artifact_cache_dir }}/{{ item.filename }}"
+    state: present
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+  loop: "{{ deb_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Verify deb package versions
+  ansible.builtin.command: "dpkg-query -W -f=${Version} {{ item.package }}"
+  register: deb_versions
+  changed_when: false
+  failed_when: item.version_assert not in deb_versions.stdout
+  loop: "{{ deb_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install snap packages with post-install version gate
+  ansible.builtin.command: "snap install {{ item.name }}{{ ' --classic' if item.classic else '' }}"
+  register: snap_install_result
+  changed_when: "'is already installed' not in (snap_install_result.stderr + snap_install_result.stdout)"
+  failed_when:
+    - snap_install_result.rc != 0
+    - "'is already installed' not in (snap_install_result.stderr + snap_install_result.stdout)"
+  loop: "{{ snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Verify snap package versions
+  ansible.builtin.shell: "set -euo pipefail; snap list {{ item.name }} | awk 'NR==2 {print $2}'"
+  args:
+    executable: /bin/bash
+  register: snap_versions
+  changed_when: false
+  failed_when: snap_versions.stdout != item.expected_version
+  loop: "{{ snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Download pinned AppImages
+  ansible.builtin.get_url:
+    url: "{{ item.url }}"
+    dest: "{{ appimage_dir }}/{{ item.filename }}"
+    checksum: "{{ item.checksum }}"
+    timeout: "{{ download_timeout_seconds }}"
+    validate_certs: "{{ item.validate_certs | default(true) }}"
+    mode: "0755"
+  register: appimage_download
+  retries: 3
+  delay: 10
+  until: appimage_download is succeeded
+  loop: "{{ appimages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Link AppImages into PATH
+  ansible.builtin.file:
+    src: "{{ appimage_dir }}/{{ item.filename }}"
+    dest: "/usr/local/bin/{{ item.name }}"
+    state: link
+    force: true
+  loop: "{{ appimages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Write AppImage version manifests
+  ansible.builtin.copy:
+    dest: "{{ appimage_dir }}/{{ item.name }}.version"
+    mode: "0644"
+    content: |
+      name={{ item.name }}
+      version={{ item.version }}
+      url={{ item.url }}
+      checksum={{ item.checksum }}
+  loop: "{{ appimages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Install AppImage desktop files
+  ansible.builtin.copy:
+    dest: "/usr/share/applications/{{ item.name }}.desktop"
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name={{ item.display_name }}
+      Exec={{ appimage_dir }}/{{ item.filename }} %U
+      Terminal=false
+      Categories={{ item.categories }}
+  loop: "{{ appimages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Download Blender archive
+  ansible.builtin.get_url:
+    url: "{{ blender.url }}"
+    dest: "{{ artifact_cache_dir }}/{{ blender.filename }}"
+    checksum: "{{ blender.checksum }}"
+    timeout: "{{ download_timeout_seconds }}"
+    mode: "0644"
+  register: blender_download
+  retries: 3
+  delay: 10
+  until: blender_download is succeeded
+
+- name: Extract Blender archive
+  ansible.builtin.unarchive:
+    src: "{{ artifact_cache_dir }}/{{ blender.filename }}"
+    dest: /opt
+    remote_src: true
+    creates: "{{ blender.install_dir }}/blender"
+
+- name: Link Blender into PATH
+  ansible.builtin.file:
+    src: "{{ blender.install_dir }}/blender"
+    dest: /usr/local/bin/blender
+    state: link
+    force: true
+
+- name: Install Blender desktop file
+  ansible.builtin.copy:
+    dest: /usr/share/applications/blender.desktop
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=Blender
+      Exec={{ blender.install_dir }}/blender %f
+      Terminal=false
+      Categories=Graphics;3DGraphics;
+
+- name: Verify Blender version
+  ansible.builtin.command: /usr/local/bin/blender --version
+  register: blender_version
+  changed_when: false
+  failed_when: ("Blender " ~ blender.version) not in blender_version.stdout
+
+- name: Download Zotero archive
+  ansible.builtin.get_url:
+    url: "{{ zotero.url }}"
+    dest: "{{ artifact_cache_dir }}/{{ zotero.filename }}"
+    checksum: "{{ zotero.checksum }}"
+    timeout: "{{ download_timeout_seconds }}"
+    mode: "0644"
+  register: zotero_download
+  retries: 3
+  delay: 10
+  until: zotero_download is succeeded
+
+- name: Create Zotero install directory
+  ansible.builtin.file:
+    path: "{{ zotero.install_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Extract Zotero archive
+  ansible.builtin.unarchive:
+    src: "{{ artifact_cache_dir }}/{{ zotero.filename }}"
+    dest: "{{ zotero.install_dir }}"
+    remote_src: true
+    creates: "{{ zotero.install_dir }}/Zotero_linux-x86_64/zotero"
+
+- name: Link Zotero into PATH
+  ansible.builtin.file:
+    src: "{{ zotero.install_dir }}/Zotero_linux-x86_64/zotero"
+    dest: /usr/local/bin/zotero
+    state: link
+    force: true
+
+- name: Install Zotero desktop file
+  ansible.builtin.copy:
+    dest: /usr/share/applications/zotero.desktop
+    mode: "0644"
+    content: |
+      [Desktop Entry]
+      Type=Application
+      Name=Zotero
+      Exec={{ zotero.install_dir }}/Zotero_linux-x86_64/zotero %U
+      Terminal=false
+      Categories=Office;Database;
+
+- name: Verify Zotero version
+  ansible.builtin.shell: "set -euo pipefail; awk -F= '/^Version=/ {print $2}' {{ zotero.install_dir }}/Zotero_linux-x86_64/app/application.ini"
+  args:
+    executable: /bin/bash
+  register: zotero_version
+  changed_when: false
+  failed_when: zotero_version.stdout != zotero.version
+
+- name: Download REAPER archive
+  ansible.builtin.get_url:
+    url: "{{ reaper.url }}"
+    dest: "{{ artifact_cache_dir }}/{{ reaper.filename }}"
+    checksum: "{{ reaper.checksum }}"
+    timeout: "{{ download_timeout_seconds }}"
+    mode: "0644"
+  register: reaper_download
+  retries: 3
+  delay: 10
+  until: reaper_download is succeeded
+
+- name: Extract REAPER archive
+  ansible.builtin.unarchive:
+    src: "{{ artifact_cache_dir }}/{{ reaper.filename }}"
+    dest: "{{ artifact_cache_dir }}"
+    remote_src: true
+    creates: "{{ artifact_cache_dir }}/reaper_linux_x86_64/install-reaper.sh"
+
+- name: Install REAPER into OSWorld user's home
+  ansible.builtin.command: "{{ artifact_cache_dir }}/reaper_linux_x86_64/install-reaper.sh --install {{ effective_osworld_home }}/opt --integrate-user-desktop --quiet"
+  become: true
+  become_user: "{{ effective_osworld_user }}"
+  environment:
+    HOME: "{{ effective_osworld_home }}"
+  args:
+    creates: "{{ effective_osworld_home }}/opt/REAPER/reaper"
+
+- name: Link REAPER into PATH
+  ansible.builtin.file:
+    src: "{{ effective_osworld_home }}/opt/REAPER/reaper"
+    dest: /usr/local/bin/reaper
+    state: link
+    force: true
+
+- name: Write REAPER version manifest
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/opt/REAPER/.osworld-version"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      name=reaper
+      version={{ reaper.version }}
+      url={{ reaper.url }}
+      checksum={{ reaper.checksum }}
+
+- name: Create WPS font directory
+  ansible.builtin.file:
+    path: "{{ wps_fonts.font_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Verify controller WPS symbol font asset
+  ansible.builtin.stat:
+    path: "{{ wps_fonts.local_src }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: local_wps_symbol_zip_stat
+  failed_when:
+    - not local_wps_symbol_zip_stat.stat.exists
+      or local_wps_symbol_zip_stat.stat.checksum != (wps_fonts.symbol_zip_checksum | regex_replace('^sha256:', ''))
+
+- name: Copy WPS symbol font zip from controller
+  ansible.builtin.copy:
+    src: "{{ wps_fonts.local_src }}"
+    dest: "{{ artifact_cache_dir }}/{{ wps_fonts.symbol_zip }}"
+    mode: "0644"
+
+- name: Verify WPS symbol font zip checksum
+  ansible.builtin.stat:
+    path: "{{ artifact_cache_dir }}/{{ wps_fonts.symbol_zip }}"
+    checksum_algorithm: sha256
+  register: wps_symbol_zip_stat
+  failed_when: wps_symbol_zip_stat.stat.checksum != (wps_fonts.symbol_zip_checksum | regex_replace('^sha256:', ''))
+
+- name: Extract WPS symbol font files
+  ansible.builtin.unarchive:
+    src: "{{ artifact_cache_dir }}/{{ wps_fonts.symbol_zip }}"
+    dest: "{{ wps_fonts.font_dir }}"
+    remote_src: true
+
+- name: Normalize WPS font file permissions
+  ansible.builtin.shell: |
+    set -euo pipefail
+    find "{{ wps_fonts.font_dir }}" -type d -exec chmod 0755 {} +
+    find "{{ wps_fonts.font_dir }}" -type f -exec chmod 0644 {} +
+  args:
+    executable: /bin/bash
+  changed_when: true
+
+- name: Rebuild font cache
+  ansible.builtin.command: fc-cache -fv
+  changed_when: true
+
+- name: Verify WPS symbol fonts are visible
+  ansible.builtin.shell: |
+    set -euo pipefail
+    fc-list | awk 'BEGIN { IGNORECASE=1 } /Wingdings|Webdings|MT Extra|Symbol/ { found=1 } END { exit found ? 0 : 1 }'
+  args:
+    executable: /bin/bash
+  changed_when: false

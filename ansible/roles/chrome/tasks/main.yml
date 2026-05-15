@@ -1,0 +1,42 @@
+- name: Create Chrome managed policy directory
+  ansible.builtin.file:
+    path: /etc/opt/chrome/policies/managed
+    state: directory
+    mode: "0755"
+
+- name: Configure Chrome Safe Browsing managed policy for no protection
+  ansible.builtin.copy:
+    dest: /etc/opt/chrome/policies/managed/osworld-safe-browsing.json
+    mode: "0644"
+    content: |
+      {
+        "SafeBrowsingProtectionLevel": 0,
+        "SafeBrowsingEnabled": false
+      }
+
+- name: Create Chrome profile directory
+  ansible.builtin.file:
+    path: "{{ effective_osworld_home }}/.config/google-chrome/Default"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+
+- name: Set user-level Chrome Safe Browsing preference when preferences file exists or is empty
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pref="{{ effective_osworld_home }}/.config/google-chrome/Default/Preferences"
+    if [ -s "$pref" ]; then
+      tmp="$(mktemp)"
+      jq '.safebrowsing.enabled=false | .safebrowsing.enhanced=false' "$pref" > "$tmp"
+      cat "$tmp" > "$pref"
+      rm -f "$tmp"
+    else
+      printf '{"safebrowsing":{"enabled":false,"enhanced":false}}\n' > "$pref"
+    fi
+    chown "{{ effective_osworld_user }}:{{ effective_osworld_user }}" "$pref"
+    chmod 0600 "$pref"
+  args:
+    executable: /bin/bash
+  changed_when: true
+
