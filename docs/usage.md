@@ -31,6 +31,14 @@ scripts/download-base-images.sh
 
 The script writes `packer/base-images.auto.pkrvars.hcl`, which is ignored by git. It points Packer at the discovered `.vmx` and `.qcow2` paths, records the qcow2 checksum, and caches the checksum-verified WPS symbol font ZIP under ignored `downloads/wps_fonts/`. Run `scripts/download-wps-fonts.sh` directly if only that font asset needs refreshing.
 
+To pre-cache the pinned application artifacts and OSWorld server source archive used by Ansible, run:
+
+```bash
+scripts/download-provision-assets.sh
+```
+
+This writes checked debs to `downloads/provision/deb/`, AppImages to `downloads/provision/appimages/`, tar archives to `downloads/provision/archives/`, cached snaps to `downloads/provision/snaps/` when `snap` is available on the controller, and the server source archive to `downloads/osworld_server/`. It also refreshes the WPS font and QEMU SSH deb caches. Packer does not invoke this script automatically. When the files are present, the playbook copies them from the controller first; missing files still fall back to the pinned upstream sources in `ansible/group_vars/all.yml`.
+
 The qcow2 base does not expose SSH by default. Prepare an ignored SSH-enabled qcow2 copy before the QEMU Packer build:
 
 ```bash

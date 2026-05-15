@@ -55,6 +55,14 @@ packer init packer
 scripts/download-base-images.sh
 ```
 
+如果希望提前缓存 Packer 或 Docker update 构建用到的固定安装包，可以手动执行：
+
+```bash
+scripts/download-provision-assets.sh
+```
+
+Playbook 会优先检查 `downloads/provision/` 和 `downloads/osworld_server/` 里的 deb、AppImage、tar 归档、snap 缓存以及 OSWorld server 源码归档；脚本也会刷新 WPS 字体和 QEMU SSH deb 缓存。带 checksum 的文件会先校验再复制到目标镜像。缓存缺失时才回退到固定的上游来源。这个脚本需要用户手动跑，Packer 不会默认执行。
+
 QEMU base 默认不暴露 SSH，需要先准备一个 ignored 的 SSH-enabled qcow2 副本：
 
 ```bash
@@ -174,7 +182,7 @@ Ansible playbook 会安装或验证以下版本：
 
 - Chrome Safe Browsing 为 no protection managed policy
 - Zotero 本机通信设置
-- OSWorld server，固定到 `https://github.com/adlsdztony/osworld-server`
+- OSWorld server，缓存存在时来自 `downloads/osworld_server/`，否则回退到 `https://github.com/adlsdztony/osworld-server`
 - `/etc/X11/xorg.conf` 的 `MaxClients 2048`
 - 常见 office MIME 类型默认使用 LibreOffice
 - WPS symbol fonts，并通过 checksum 和 `fc-list` 验证

@@ -58,32 +58,7 @@ prepare_libguestfs_kernel() {
 }
 
 download_ssh_debs() {
-  mkdir -p "$SSH_DEB_DIR"
-  cat > "$SSH_DEB_DIR/SHA256SUMS" <<'EOF'
-36ae97d42dd34f6ae15e31758a6dbad4a4ade898acfd3e3cb9fd9332744d0cee  openssh-client_8.9p1-3ubuntu0.15_amd64.deb
-37a796b558f93bd2a0950794f3b477d602f908f239096c06fba10930391dc698  openssh-sftp-server_8.9p1-3ubuntu0.15_amd64.deb
-6b4f534348c282f0d77e27ba8d68e505b82fba60fc1296afc492f32ac51b131f  openssh-server_8.9p1-3ubuntu0.15_amd64.deb
-e67643b4f7af2e3f908da9140dcd3d3cdcd64dc6b2529bc63a907bf9c881ea8c  ncurses-term_6.3-2ubuntu0.1_all.deb
-245ebcce7417b587f06c38dbdc103e445334b93766aaa05594dd5ba09be142f7  ssh-import-id_5.11-0ubuntu1_all.deb
-EOF
-
-  local urls=(
-    "http://security.ubuntu.com/ubuntu/pool/main/o/openssh/openssh-client_8.9p1-3ubuntu0.15_amd64.deb"
-    "http://security.ubuntu.com/ubuntu/pool/main/o/openssh/openssh-sftp-server_8.9p1-3ubuntu0.15_amd64.deb"
-    "http://security.ubuntu.com/ubuntu/pool/main/o/openssh/openssh-server_8.9p1-3ubuntu0.15_amd64.deb"
-    "http://security.ubuntu.com/ubuntu/pool/main/n/ncurses/ncurses-term_6.3-2ubuntu0.1_all.deb"
-    "http://archive.ubuntu.com/ubuntu/pool/main/s/ssh-import-id/ssh-import-id_5.11-0ubuntu1_all.deb"
-  )
-
-  local url file
-  for url in "${urls[@]}"; do
-    file="$SSH_DEB_DIR/${url##*/}"
-    if [ ! -f "$file" ]; then
-      curl --location --fail --retry 3 "$url" -o "$file"
-    fi
-  done
-
-  (cd "$SSH_DEB_DIR" && sha256sum -c SHA256SUMS)
+  SSH_DEB_DIR="$SSH_DEB_DIR" "$ROOT_DIR/scripts/download-qemu-ssh-debs.sh"
 }
 
 prepare_libguestfs_kernel

@@ -26,6 +26,12 @@ fi
 PROVISION_CACHE_BUST="${PROVISION_CACHE_BUST:-$(
   {
     find "$ROOT_DIR/ansible" -type f -print0
+    if [ -d "$ROOT_DIR/downloads/provision" ]; then
+      find "$ROOT_DIR/downloads/provision" -type f -print0
+    fi
+    if [ -d "$ROOT_DIR/downloads/osworld_server" ]; then
+      find "$ROOT_DIR/downloads/osworld_server" -type f -print0
+    fi
     printf '%s\0' \
       "$ROOT_DIR/ansible.cfg" \
       "$ROOT_DIR/downloads/wps_fonts/wps_symbol_fonts.zip"

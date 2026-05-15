@@ -34,7 +34,7 @@ RUN chmod 0755 \
 
 RUN --mount=type=bind,source=ansible,target=/mnt/osworld-provision/ansible,readonly \
     --mount=type=bind,source=ansible.cfg,target=/mnt/osworld-provision/ansible.cfg,readonly \
-    --mount=type=bind,source=downloads/wps_fonts,target=/mnt/osworld-provision/downloads/wps_fonts,readonly \
+    --mount=type=bind,source=downloads,target=/mnt/osworld-provision/downloads,readonly \
     --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt/lists,sharing=locked \
     printf 'Provision cache key: %s\n' "$PROVISION_CACHE_BUST" \

@@ -82,20 +82,45 @@
     state: started
   when: target_platform | default('') != 'docker'
 
-- name: Download pinned deb packages
+- name: Check controller deb package cache
+  ansible.builtin.stat:
+    path: "{{ controller_deb_download_dir }}/{{ item.filename }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: controller_deb_package_stat
+  failed_when: >-
+    controller_deb_package_stat.stat.exists
+    and controller_deb_package_stat.stat.checksum != (item.checksum | regex_replace('^sha256:', ''))
+  loop: "{{ deb_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Copy cached deb packages from controller
+  ansible.builtin.copy:
+    src: "{{ controller_deb_download_dir }}/{{ item.item.filename }}"
+    dest: "{{ artifact_cache_dir }}/{{ item.item.filename }}"
+    mode: "0644"
+  loop: "{{ controller_deb_package_stat.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.stat.exists
+
+- name: Download missing pinned deb packages
   ansible.builtin.get_url:
-    url: "{{ item.url }}"
-    dest: "{{ artifact_cache_dir }}/{{ item.filename }}"
-    checksum: "{{ item.checksum }}"
+    url: "{{ item.item.url }}"
+    dest: "{{ artifact_cache_dir }}/{{ item.item.filename }}"
+    checksum: "{{ item.item.checksum }}"
     timeout: "{{ download_timeout_seconds }}"
     mode: "0644"
   register: deb_download
   retries: 3
   delay: 10
   until: deb_download is succeeded
-  loop: "{{ deb_packages }}"
+  loop: "{{ controller_deb_package_stat.results }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item.item.name }}"
+  when: not item.stat.exists
 
 - name: Install pinned deb packages
   ansible.builtin.apt:
@@ -116,7 +141,101 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Install snap packages with post-install version gate
+- name: Check controller snap package cache
+  ansible.builtin.stat:
+    path: "{{ controller_snap_download_dir }}/{{ item.name }}.snap"
+  delegate_to: localhost
+  become: false
+  register: controller_snap_package_stat
+  loop: "{{ snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: target_platform | default('') != 'docker'
+
+- name: Check controller snap assertion cache
+  ansible.builtin.stat:
+    path: "{{ controller_snap_download_dir }}/{{ item.name }}.assert"
+  delegate_to: localhost
+  become: false
+  register: controller_snap_assert_stat
+  loop: "{{ snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: target_platform | default('') != 'docker'
+
+- name: Copy cached snap packages from controller
+  ansible.builtin.copy:
+    src: "{{ controller_snap_download_dir }}/{{ item.item.name }}.snap"
+    dest: "{{ artifact_cache_dir }}/{{ item.item.name }}.snap"
+    mode: "0644"
+  loop: "{{ controller_snap_package_stat.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - target_platform | default('') != 'docker'
+    - item.stat.exists
+
+- name: Copy cached snap assertions from controller
+  ansible.builtin.copy:
+    src: "{{ controller_snap_download_dir }}/{{ item.item.name }}.assert"
+    dest: "{{ artifact_cache_dir }}/{{ item.item.name }}.assert"
+    mode: "0644"
+  loop: "{{ controller_snap_assert_stat.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - target_platform | default('') != 'docker'
+    - item.stat.exists
+
+- name: Acknowledge cached snap assertions
+  ansible.builtin.command: "snap ack {{ artifact_cache_dir }}/{{ item.item.name }}.assert"
+  register: snap_ack_result
+  changed_when: false
+  loop: "{{ controller_snap_assert_stat.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - target_platform | default('') != 'docker'
+    - item.stat.exists
+    - >-
+      (
+        controller_snap_package_stat.results
+        | selectattr('item.name', 'equalto', item.item.name)
+        | map(attribute='stat.exists')
+        | first
+        | default(false)
+      )
+
+- name: Install cached snap packages with post-install version gate
+  ansible.builtin.command: >-
+    snap install {{ artifact_cache_dir }}/{{ item.item.name }}.snap
+    {{
+      ' --classic' if item.item.classic
+      else ''
+    }}
+    {{
+      '' if (
+        controller_snap_assert_stat.results
+        | selectattr('item.name', 'equalto', item.item.name)
+        | map(attribute='stat.exists')
+        | first
+        | default(false)
+      )
+      else ' --dangerous'
+    }}
+  register: cached_snap_install_result
+  changed_when: "'is already installed' not in (cached_snap_install_result.stderr + cached_snap_install_result.stdout)"
+  failed_when:
+    - cached_snap_install_result.rc != 0
+    - "'is already installed' not in (cached_snap_install_result.stderr + cached_snap_install_result.stdout)"
+  loop: "{{ controller_snap_package_stat.results | default([]) }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when:
+    - target_platform | default('') != 'docker'
+    - item.stat.exists
+
+- name: Install missing snap packages with post-install version gate
   ansible.builtin.command: "snap install {{ item.name }}{{ ' --classic' if item.classic else '' }}"
   register: snap_install_result
   changed_when: "'is already installed' not in (snap_install_result.stderr + snap_install_result.stdout)"
@@ -126,7 +245,17 @@
   loop: "{{ snap_packages }}"
   loop_control:
     label: "{{ item.name }}"
-  when: target_platform | default('') != 'docker'
+  when:
+    - target_platform | default('') != 'docker'
+    - >-
+      not (
+        controller_snap_package_stat.results
+        | default([])
+        | selectattr('item.name', 'equalto', item.name)
+        | map(attribute='stat.exists')
+        | first
+        | default(false)
+      )
 
 - name: Verify snap package versions
   ansible.builtin.shell: "set -euo pipefail; snap list {{ item.name }} | awk 'NR==2 {print $2}'"
@@ -140,21 +269,46 @@
     label: "{{ item.name }}"
   when: target_platform | default('') != 'docker'
 
-- name: Download pinned AppImages
+- name: Check controller AppImage cache
+  ansible.builtin.stat:
+    path: "{{ controller_appimage_download_dir }}/{{ item.filename }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: controller_appimage_stat
+  failed_when: >-
+    controller_appimage_stat.stat.exists
+    and controller_appimage_stat.stat.checksum != (item.checksum | regex_replace('^sha256:', ''))
+  loop: "{{ appimages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Copy cached AppImages from controller
+  ansible.builtin.copy:
+    src: "{{ controller_appimage_download_dir }}/{{ item.item.filename }}"
+    dest: "{{ appimage_dir }}/{{ item.item.filename }}"
+    mode: "0755"
+  loop: "{{ controller_appimage_stat.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"
+  when: item.stat.exists
+
+- name: Download missing pinned AppImages
   ansible.builtin.get_url:
-    url: "{{ item.url }}"
-    dest: "{{ appimage_dir }}/{{ item.filename }}"
-    checksum: "{{ item.checksum }}"
+    url: "{{ item.item.url }}"
+    dest: "{{ appimage_dir }}/{{ item.item.filename }}"
+    checksum: "{{ item.item.checksum }}"
     timeout: "{{ download_timeout_seconds }}"
-    validate_certs: "{{ item.validate_certs | default(true) }}"
+    validate_certs: "{{ item.item.validate_certs | default(true) }}"
     mode: "0755"
   register: appimage_download
   retries: 3
   delay: 10
   until: appimage_download is succeeded
-  loop: "{{ appimages }}"
+  loop: "{{ controller_appimage_stat.results }}"
   loop_control:
-    label: "{{ item.name }}"
+    label: "{{ item.item.name }}"
+  when: not item.stat.exists
 
 - name: Link AppImages into PATH
   ansible.builtin.file:
@@ -210,7 +364,25 @@
   loop_control:
     label: "{{ item.name }}"
 
-- name: Download Blender archive
+- name: Check controller Blender archive cache
+  ansible.builtin.stat:
+    path: "{{ controller_archive_download_dir }}/{{ blender.filename }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: controller_blender_archive_stat
+  failed_when: >-
+    controller_blender_archive_stat.stat.exists
+    and controller_blender_archive_stat.stat.checksum != (blender.checksum | regex_replace('^sha256:', ''))
+
+- name: Copy cached Blender archive from controller
+  ansible.builtin.copy:
+    src: "{{ controller_archive_download_dir }}/{{ blender.filename }}"
+    dest: "{{ artifact_cache_dir }}/{{ blender.filename }}"
+    mode: "0644"
+  when: controller_blender_archive_stat.stat.exists
+
+- name: Download missing Blender archive
   ansible.builtin.get_url:
     url: "{{ blender.url }}"
     dest: "{{ artifact_cache_dir }}/{{ blender.filename }}"
@@ -221,6 +393,7 @@
   retries: 3
   delay: 10
   until: blender_download is succeeded
+  when: not controller_blender_archive_stat.stat.exists
 
 - name: Extract Blender archive
   ansible.builtin.unarchive:
@@ -262,7 +435,25 @@
   changed_when: false
   failed_when: ("Blender " ~ blender.version) not in blender_version.stdout
 
-- name: Download Zotero archive
+- name: Check controller Zotero archive cache
+  ansible.builtin.stat:
+    path: "{{ controller_archive_download_dir }}/{{ zotero.filename }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: controller_zotero_archive_stat
+  failed_when: >-
+    controller_zotero_archive_stat.stat.exists
+    and controller_zotero_archive_stat.stat.checksum != (zotero.checksum | regex_replace('^sha256:', ''))
+
+- name: Copy cached Zotero archive from controller
+  ansible.builtin.copy:
+    src: "{{ controller_archive_download_dir }}/{{ zotero.filename }}"
+    dest: "{{ artifact_cache_dir }}/{{ zotero.filename }}"
+    mode: "0644"
+  when: controller_zotero_archive_stat.stat.exists
+
+- name: Download missing Zotero archive
   ansible.builtin.get_url:
     url: "{{ zotero.url }}"
     dest: "{{ artifact_cache_dir }}/{{ zotero.filename }}"
@@ -273,6 +464,7 @@
   retries: 3
   delay: 10
   until: zotero_download is succeeded
+  when: not controller_zotero_archive_stat.stat.exists
 
 - name: Create Zotero install directory
   ansible.builtin.file:
@@ -336,7 +528,25 @@
     executable: /bin/bash
   changed_when: true
 
-- name: Download REAPER archive
+- name: Check controller REAPER archive cache
+  ansible.builtin.stat:
+    path: "{{ controller_archive_download_dir }}/{{ reaper.filename }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: controller_reaper_archive_stat
+  failed_when: >-
+    controller_reaper_archive_stat.stat.exists
+    and controller_reaper_archive_stat.stat.checksum != (reaper.checksum | regex_replace('^sha256:', ''))
+
+- name: Copy cached REAPER archive from controller
+  ansible.builtin.copy:
+    src: "{{ controller_archive_download_dir }}/{{ reaper.filename }}"
+    dest: "{{ artifact_cache_dir }}/{{ reaper.filename }}"
+    mode: "0644"
+  when: controller_reaper_archive_stat.stat.exists
+
+- name: Download missing REAPER archive
   ansible.builtin.get_url:
     url: "{{ reaper.url }}"
     dest: "{{ artifact_cache_dir }}/{{ reaper.filename }}"
@@ -347,6 +557,7 @@
   retries: 3
   delay: 10
   until: reaper_download is succeeded
+  when: not controller_reaper_archive_stat.stat.exists
 
 - name: Extract REAPER archive
   ansible.builtin.unarchive:

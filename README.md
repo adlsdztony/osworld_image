@@ -55,6 +55,14 @@ Download the Hugging Face base images and generate ignored Packer var files:
 scripts/download-base-images.sh
 ```
 
+Optionally pre-cache pinned provision artifacts before Packer or Docker update builds:
+
+```bash
+scripts/download-provision-assets.sh
+```
+
+The playbook checks `downloads/provision/` and `downloads/osworld_server/` first for pinned deb, AppImage, tar archives, cached snaps, and the OSWorld server source archive. The script also refreshes the WPS font and QEMU SSH deb caches. If a checked artifact is missing, Ansible falls back to the pinned upstream source. This script is intentionally manual; Packer does not run it automatically.
+
 The QEMU base does not expose SSH by default. Prepare an ignored SSH-enabled qcow2 copy first:
 
 ```bash
@@ -174,7 +182,7 @@ It also configures:
 
 - Chrome Safe Browsing as a no-protection managed policy
 - Zotero local communication preferences
-- OSWorld server from `https://github.com/adlsdztony/osworld-server`
+- OSWorld server from `downloads/osworld_server/` when cached, otherwise `https://github.com/adlsdztony/osworld-server`
 - `/etc/X11/xorg.conf` with `MaxClients 2048`
 - Common office MIME defaults to LibreOffice
 - WPS symbol fonts, verified by checksum and `fc-list`

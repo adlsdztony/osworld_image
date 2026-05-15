@@ -3,10 +3,17 @@ local_vm_final_password: osworld-public-evaluation
 
 artifact_cache_dir: /var/cache/osworld-delta
 appimage_dir: /opt/osworld-appimages
+controller_download_dir: "{{ playbook_dir }}/../downloads"
+controller_provision_download_dir: "{{ controller_download_dir }}/provision"
+controller_deb_download_dir: "{{ controller_provision_download_dir }}/deb"
+controller_appimage_download_dir: "{{ controller_provision_download_dir }}/appimages"
+controller_archive_download_dir: "{{ controller_provision_download_dir }}/archives"
+controller_snap_download_dir: "{{ controller_provision_download_dir }}/snaps"
 download_timeout_seconds: 300
 
 osworld_server_repo_url: https://github.com/adlsdztony/osworld-server.git
 osworld_server_commit: a6979eaf85ce22c281119d2b60e1f25da6dd68ec
+osworld_server_local_archive: "{{ controller_download_dir }}/osworld_server/osworld-server-{{ osworld_server_commit }}.tar.gz"
 osworld_uv_version: "0.9.13"
 osworld_service_name: osworld.service
 osworld_server_host: 0.0.0.0
@@ -94,7 +101,7 @@ reaper:
 
 wps_fonts:
   source_url: "https://gitee.com/owlman/wps_fonts/repository/archive/89beda2cf241c4524a5926bf13c92bdc8a73e9d0.zip"
-  local_src: "{{ playbook_dir }}/../downloads/wps_fonts/wps_symbol_fonts.zip"
+  local_src: "{{ controller_download_dir }}/wps_fonts/wps_symbol_fonts.zip"
   symbol_zip: "wps_symbol_fonts.zip"
   symbol_zip_checksum: "sha256:01e965dc81167ae816b3bbd7076986bf2fb64a2c456a077df677f8882dabcbe2"
   font_dir: /usr/share/fonts/wps-office

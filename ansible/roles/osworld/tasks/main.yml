@@ -26,12 +26,39 @@
     group: "{{ effective_osworld_user }}"
     mode: "0755"
 
+- name: Check controller OSWorld server archive cache
+  ansible.builtin.stat:
+    path: "{{ osworld_server_local_archive }}"
+  delegate_to: localhost
+  become: false
+  register: controller_osworld_server_archive_stat
+
+- name: Reset temporary OSWorld server source directory
+  ansible.builtin.file:
+    path: /opt/osworld-server-src
+    state: absent
+
+- name: Create temporary OSWorld server source directory
+  ansible.builtin.file:
+    path: /opt/osworld-server-src
+    state: directory
+    mode: "0755"
+
+- name: Extract cached OSWorld server source archive
+  ansible.builtin.unarchive:
+    src: "{{ osworld_server_local_archive }}"
+    dest: /opt/osworld-server-src
+    extra_opts:
+      - --strip-components=1
+  when: controller_osworld_server_archive_stat.stat.exists
+
 - name: Clone pinned OSWorld server source
   ansible.builtin.git:
     repo: "{{ osworld_server_repo_url }}"
     dest: /opt/osworld-server-src
     version: "{{ osworld_server_commit }}"
     force: true
+  when: not controller_osworld_server_archive_stat.stat.exists
 
 - name: Replace OSWorld server directory from pinned source
   ansible.builtin.shell: |
