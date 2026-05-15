@@ -27,6 +27,7 @@
     - packages
     - chrome
     - zotero
+    - first_run
     - osworld
     - x11
     - defaults

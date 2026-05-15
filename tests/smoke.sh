@@ -42,6 +42,13 @@ assert_desktop_icon() {
   test -s "$icon_path" || fail "$icon_path missing or empty"
 }
 
+assert_file_contains() {
+  local path="$1"
+  local needle="$2"
+  test -f "$path" || fail "$path missing"
+  grep -Fq "$needle" "$path" || fail "$path missing expected content: $needle"
+}
+
 assert_dpkg_version obsidian "1.10.6"
 assert_dpkg_version xmind-vana "26.1.3145"
 assert_dpkg_version wps-office "11.1.0.11723"
@@ -83,6 +90,34 @@ find "$OSWORLD_HOME/.zotero/zotero" -type f \( -name prefs.js -o -name user.js \
 find "$OSWORLD_HOME/.zotero/zotero" -type f \( -name prefs.js -o -name user.js \) \
   -exec grep -q 'extensions.zotero.httpServer.localAPI.enabled", true' {} + \
   || fail "Zotero localAPI.enabled preference missing"
+find "$OSWORLD_HOME/.zotero/zotero" -type f \( -name prefs.js -o -name user.js \) \
+  -exec grep -q 'extensions.zotero.firstRun2", false' {} + \
+  || fail "Zotero firstRun2 suppression preference missing"
+find "$OSWORLD_HOME/.zotero/zotero" -type f \( -name prefs.js -o -name user.js \) \
+  -exec grep -q 'extensions.zoteroOpenOfficeIntegration.skipInstallation", true' {} + \
+  || fail "Zotero LibreOffice integration prompt suppression missing"
+
+assert_file_contains "$OSWORLD_HOME/.config/Kingsoft/Office.conf" 'common\AcceptedEULA=true'
+assert_file_contains "$OSWORLD_HOME/.config/Kingsoft/Office.conf" 'common\UserInfo\ACUPI=true'
+assert_file_contains "$OSWORLD_HOME/.config/Kingsoft/WPSCloud.conf" 'kicUploadSyncSwitch=false'
+
+jq -e '(.acceptedEULAVersions | index("3")) and .lastWelcomeVersion == 11 and .lastWelcomeVersionForUS == 12' \
+  "$OSWORLD_HOME/.config/Xmind/Electron v3/vana/state/app.json" >/dev/null \
+  || fail "XMind EULA/welcome suppression missing"
+jq -e '.sendUsageData == false and .autoUpdateType == "manual"' \
+  "$OSWORLD_HOME/.config/Xmind/Electron v3/vana/state/preferences.json" >/dev/null \
+  || fail "XMind startup preferences missing"
+
+assert_file_contains "$OSWORLD_HOME/.config/MuseScore/MuseScore4.ini" "hasCompletedFirstLaunchSetup=true"
+assert_file_contains "$OSWORLD_HOME/.config/MuseScore/MuseScore4.ini" "skippedVersion=4.6.5"
+
+assert_file_contains "$OSWORLD_HOME/.config/REAPER/reaper.ini" "[nag]"
+assert_file_contains "$OSWORLD_HOME/.config/REAPER/reaper.ini" "lastt=4102444800"
+
+audacity_revision="$(snap list audacity | awk 'NR==2 {print $3}')"
+audacity_cfg="$OSWORLD_HOME/snap/audacity/$audacity_revision/.config/audacity/audacity.cfg"
+assert_file_contains "$audacity_cfg" "IntroOrderStart=2"
+assert_file_contains "$audacity_cfg" "ShowSplashScreen=0"
 
 awk '
   tolower($0) ~ /^[[:space:]]*section[[:space:]]+"serverflags"/ { insec=1 }

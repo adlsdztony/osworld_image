@@ -1,0 +1,244 @@
+- name: Create WPS first-run config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+  loop:
+    - "{{ effective_osworld_home }}/.config/Kingsoft"
+    - "{{ effective_osworld_home }}/.local/share/Kingsoft/account"
+
+- name: Mark WPS EULA and privacy onboarding as completed
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Kingsoft/Office.conf"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      [6.0]
+      wpsoffice\Application%20Settings\AppComponentMode=prome_fushion
+      wpsoffice\Application%20Settings\AppComponentModeInstall=prome_fushion
+      wpsoffice\Application%20Settings\UpdateRecoverCheckTag=true
+      common\AcceptedEULA=true
+      common\UserInfo\ACUPI=true
+      common\loginSafeVersion=true
+      common\PromeWindowCount=1
+
+- name: Disable WPS cloud onboarding switches
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Kingsoft/WPSCloud.conf"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      [General]
+      SendBy=false
+      UploadSync=false
+      fileTransfer=false
+      kicDesktopSyncSwitch=false
+      kicFileTransferSwitch=false
+      kicSendBySwitch=false
+      kicShareFileSwitch=false
+      kicSyncFolderSwitch=false
+      kicUploadFileSwitch=false
+      kicUploadSyncSwitch=false
+      newshare2=false
+      uploadFile=false
+      shareFile=false
+      DesktopSync=false
+      SpecifyFolderSync=false
+      qingVersion=1
+
+      [Nse]
+      IsEnterprise=0
+
+      [msgcenter]
+      MsgCenterMsgVersion=13
+
+- name: Disable WPS assistant onboarding prompts
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Kingsoft/qing.conf"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      [function]
+      OpenShareFileBySid=false
+      AddMobileDevice=false
+
+      [msgpush]
+      QingMessageVersion=1
+
+      [wpsbox]
+      WpsOfficeAssistantMiniEnable=false
+
+- name: Create XMind first-run state directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+  loop:
+    - "{{ effective_osworld_home }}/.config/Xmind"
+    - "{{ effective_osworld_home }}/.config/Xmind/Electron v3/vana/state"
+
+- name: Mark XMind data migration as complete
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Xmind/.VANA_MIGRATED"
+    content: ""
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+
+- name: Mark XMind EULA and welcome screens as completed
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Xmind/Electron v3/vana/state/app.json"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      {"acceptedEULAVersions":["3"],"lastWelcomeVersion":11,"lastWelcomeVersionForUS":12,"launchRecordOfNew":{"lastLaunchTime":0,"lastViewTab":"recent","lastViewTeamId":null}}
+
+- name: Configure XMind non-interactive startup preferences
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Xmind/Electron v3/vana/state/preferences.json"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      {"systemLanguage":"en-GB","systemAppearance":"default","hiddenShareItems":[],"spellCheck":true,"sendUsageData":false,"autoUpdateType":"manual","autoUpdateTypeSME":"not","defaultTheme":"default","watermarkEnabled":true,"shouldShowGuidelineForMovingTopics":false}
+
+- name: Set XMind account region without opening activation onboarding
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/Xmind/Electron v3/vana/state/account.json"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      {"region":"us","openActivateDialogDate":"2026-01-01T00:00:00.000Z"}
+
+- name: Create MuseScore first-run config directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+  loop:
+    - "{{ effective_osworld_home }}/.config/MuseScore"
+    - "{{ effective_osworld_home }}/.local/share/MuseScore/MuseScore4/session"
+
+- name: Mark MuseScore first-launch setup as completed
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/MuseScore/MuseScore4.ini"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      [application]
+      hasCompletedFirstLaunchSetup=true
+      skippedVersion=4.6.5
+
+- name: Clear MuseScore startup session list
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.local/share/MuseScore/MuseScore4/session/session.json"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      []
+
+- name: Create REAPER first-run config directory
+  ansible.builtin.file:
+    path: "{{ effective_osworld_home }}/.config/REAPER"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+
+- name: Seed REAPER first-run acknowledgement state
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/REAPER/reaper.ini"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      [.swell]
+      ui_scale=1.0 // scales the sizes in libSwell.colortheme
+      ui_scale_auto=1 // set to 0 to disable system DPI detection (only used when ui_scale=1)
+
+      [nag]
+      nag=968F066A9E622BB184F6F6CEC305F00653DAD4DDB598FF1BB2
+
+      [reaper]
+      lastproject=
+
+      [verchk]
+      lastt=4102444800
+
+- name: Seed REAPER evaluation acknowledgement state
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/.config/REAPER/reaper-reginfo2.ini"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      [us]
+      uss=958F066A1B000000020000000000000000000000C3E82552AF74DC738D754B01FD7AB4CFC08D3DDCF3
+
+- name: Resolve Audacity snap revision
+  ansible.builtin.shell: "set -euo pipefail; snap list audacity | awk 'NR==2 {print $3}'"
+  args:
+    executable: /bin/bash
+  register: audacity_snap_revision
+  changed_when: false
+
+- name: Create Audacity first-run config directories
+  ansible.builtin.file:
+    path: "{{ effective_osworld_home }}/snap/audacity/{{ audacity_snap_revision.stdout }}/.config/audacity"
+    state: directory
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0755"
+
+- name: Link Audacity current snap revision
+  ansible.builtin.file:
+    src: "{{ audacity_snap_revision.stdout }}"
+    dest: "{{ effective_osworld_home }}/snap/audacity/current"
+    state: link
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    force: true
+
+- name: Disable Audacity first-run intro and splash
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/snap/audacity/{{ audacity_snap_revision.stdout }}/.config/audacity/audacity.cfg"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      PrefsVersion=1.1.1r1
+      SelectionFormat=hh:mm:ss + milliseconds
+      AudioTimeFormat=hh:mm:ss
+      FrequencySelectionFormatName=Hz
+      BandwidthSelectionFormatName=octaves
+      [GUI]
+      IntroOrderStart=2
+      ShowSplashScreen=0
+      [Version]
+      Major=3
+      Minor=7
+      Micro=5
+      [Directories]
+      TempDir=/tmp/audacity-user
+
+- name: Initialize Audacity plugin settings file
+  ansible.builtin.copy:
+    dest: "{{ effective_osworld_home }}/snap/audacity/{{ audacity_snap_revision.stdout }}/.config/audacity/pluginsettings.cfg"
+    owner: "{{ effective_osworld_user }}"
+    group: "{{ effective_osworld_user }}"
+    mode: "0644"
+    content: |
+      pluginsettingsversion=1.0

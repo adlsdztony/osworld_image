@@ -5,8 +5,10 @@ user_name="$1"
 user_home="$2"
 profile_root="$user_home/.zotero/zotero"
 profiles_ini="$profile_root/profiles.ini"
+data_dir="$user_home/Zotero"
 
 mkdir -p "$profile_root"
+mkdir -p "$data_dir"
 
 if [ ! -f "$profiles_ini" ]; then
   cat > "$profiles_ini" <<'EOF'
@@ -36,14 +38,20 @@ for profile in "${relative_profiles[@]}"; do
   mkdir -p "$profile_dir"
   for pref_file in "$profile_dir/prefs.js" "$profile_dir/user.js"; do
     touch "$pref_file"
-    grep -vE 'extensions\.zotero\.httpServer\.(localAPI\.)?enabled' "$pref_file" > "$pref_file.tmp" || true
-    cat >> "$pref_file.tmp" <<'EOF'
+    grep -vE 'browser\.laterrun\.enabled|extensions\.zotero\.dataDir|extensions\.zotero\.firstRun2|extensions\.zotero\.firstRun\.skipFirefoxProfileAccessCheck|extensions\.zotero\.httpServer\.(localAPI\.)?enabled|extensions\.zotero\.useDataDir|extensions\.zoteroOpenOfficeIntegration\.skipInstallation' "$pref_file" > "$pref_file.tmp" || true
+    cat >> "$pref_file.tmp" <<EOF
+user_pref("browser.laterrun.enabled", false);
+user_pref("extensions.zotero.dataDir", "$data_dir");
+user_pref("extensions.zotero.firstRun.skipFirefoxProfileAccessCheck", true);
+user_pref("extensions.zotero.firstRun2", false);
 user_pref("extensions.zotero.httpServer.enabled", true);
 user_pref("extensions.zotero.httpServer.localAPI.enabled", true);
+user_pref("extensions.zotero.useDataDir", true);
+user_pref("extensions.zoteroOpenOfficeIntegration.skipInstallation", true);
 EOF
     mv "$pref_file.tmp" "$pref_file"
   done
 done
 
 chown -R "$user_name:$user_name" "$user_home/.zotero"
-
+chown -R "$user_name:$user_name" "$data_dir"
