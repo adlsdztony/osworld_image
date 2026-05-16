@@ -129,7 +129,7 @@ variable "qemu_output_directory" {
 
 variable "qemu_vm_name" {
   type    = string
-  default = "osworld-delta.qcow2"
+  default = "osworld-v2-ubuntu-x86.qcow2"
 }
 
 variable "windows_source_qcow2" {
@@ -151,7 +151,7 @@ variable "windows_output_directory" {
 
 variable "windows_vm_name" {
   type    = string
-  default = "osworld-windows.qcow2"
+  default = "osworld-v2-win-x86.qcow2"
 }
 
 variable "windows_efi_firmware" {

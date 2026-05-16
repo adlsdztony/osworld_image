@@ -96,7 +96,7 @@ AWS_SMOKE_ALLOW_TEMP_NETWORK=true scripts/smoke-aws.sh ami-...
 
 ```bash
 packer build -only=qemu.qemu.osworld packer
-scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2
+scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-v2-ubuntu-x86.qcow2
 ```
 
 The local VM builder defaults to the public base-image password `password`. The QEMU artifact resets `user` to the public OSWorld password `osworld-public-evaluation`; `scripts/smoke-qemu.sh` uses that as its default. Set `PKR_VAR_ssh_password`, `SSH_PORT`, `OSWORLD_SSH_PASSWORD`, or pass SSH user/password arguments only if the source or artifact differs from the defaults.
