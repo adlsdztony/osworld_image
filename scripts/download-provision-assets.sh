@@ -174,6 +174,11 @@ download_checked \
   "$PROVISION_DIR/deb/wps-office_11.1.0.11723.XA_amd64.deb"
 
 download_checked \
+  "https://wdl1.pcfg.cache.wpscdn.com/wpsdl/wpsoffice/download/12.2.0.23131/500.1001/WPSOffice_12.2.0.23131.exe" \
+  "sha256:116ce81023c7b088952005dcb0eb4300a5abb53055076458ab49b04acae936a0" \
+  "$PROVISION_DIR/windows/WPSOffice_12.2.0.23131.exe"
+
+download_checked \
   "https://downloads.sourceforge.net/project/shotcut/v26.2.26/shotcut-linux-x86_64-26.2.26.AppImage" \
   "sha256:837e0306fa970e2f2627317859c10b83a3f4728e5cd1918995d29e5284b34415" \
   "$PROVISION_DIR/appimages/shotcut-26.2.26.AppImage"

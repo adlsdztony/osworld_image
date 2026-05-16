@@ -1,5 +1,14 @@
 default_osworld_user: user
+windows_default_osworld_user: Administrator
 local_vm_final_password: osworld-public-evaluation
+windows_final_password: osworld-public-evaluation
+windows_temp_dir: C:\Windows\Temp\osworld-delta
+windows_python_exe: python
+windows_osworld_server_dest_candidates:
+  - C:\OSWorld\desktop_env\server
+  - C:\OSWorld\server
+  - C:\Users\{{ effective_osworld_user }}\server
+  - C:\server
 
 artifact_cache_dir: /var/cache/osworld-delta
 appimage_dir: /opt/osworld-appimages
@@ -23,6 +32,14 @@ osworld_server_dest_candidates:
   - "{{ effective_osworld_home }}/osworld/server"
   - /opt/osworld/server
   - /server
+
+windows_wps:
+  version: "12.2.0.23131"
+  url: "https://wdl1.pcfg.cache.wpscdn.com/wpsdl/wpsoffice/download/12.2.0.23131/500.1001/WPSOffice_12.2.0.23131.exe"
+  checksum: "sha256:116ce81023c7b088952005dcb0eb4300a5abb53055076458ab49b04acae936a0"
+  filename: "WPSOffice_12.2.0.23131.exe"
+  local_src: "{{ controller_provision_download_dir }}/windows/WPSOffice_12.2.0.23131.exe"
+  silent_args: "/S"
 
 deb_packages:
   - name: obsidian

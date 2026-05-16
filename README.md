@@ -8,6 +8,7 @@ Supported build targets:
 
 - AWS AMI, derived from `ami-0d23263edb96951d8`
 - QEMU qcow2, derived from the OSWorld qcow2 on Hugging Face
+- Windows QEMU qcow2, derived from the Windows OSWorld qcow2 on Hugging Face
 - VMware Workstation VM, derived from the OSWorld VMX on Hugging Face
 - Docker XFCE base image, derived from the OSWorld qcow2 rootfs
 - Docker XFCE update image, derived from the Docker base image and the same Ansible delta
@@ -32,14 +33,14 @@ build/       Build outputs, git ignored
 The local machine needs:
 
 - `packer`
-- `ansible-playbook`
+- `ansible-playbook` with WinRM support for the Windows target
 - `aws` CLI and valid AWS credentials
 - `qemu-system-x86_64`, `qemu-img`, and KVM access
 - `virt-customize`, used to prepare the qcow2 base for SSH
 - `docker`, `guestfish`, and `qemu-img` for Docker rootfs migration
 - VMware Workstation and `vmrun`, only for full local VMware testing
 
-Pass sensitive values only through environment variables or ignored local var files. Do not commit AWS keys, private SSH passwords, downloaded images, build artifacts, or `.pkrvars.hcl` files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local VM base images use `password`, and final QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`.
+Pass sensitive values only through environment variables or ignored local var files. Do not commit AWS keys, private SSH passwords, downloaded images, build artifacts, or `.pkrvars.hcl` files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local Linux VM base images use `password`, Linux QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`, and Windows artifacts keep `Administrator` and reset it to `osworld-public-evaluation`.
 
 ## Quick Start
 
@@ -47,6 +48,7 @@ Initialize Packer plugins:
 
 ```bash
 packer init packer
+ansible-galaxy collection install -r ansible/collections/requirements.yml
 ```
 
 Download the Hugging Face base images and generate ignored Packer var files:
@@ -63,7 +65,7 @@ scripts/download-provision-assets.sh
 
 The playbook checks `downloads/provision/` and `downloads/osworld_server/` first for pinned deb, AppImage, tar archives, cached snaps, and the OSWorld server source archive. The script also refreshes the WPS font and QEMU SSH deb caches. If a checked artifact is missing, Ansible falls back to the pinned upstream source. This script is intentionally manual; Packer does not run it automatically.
 
-The QEMU base does not expose SSH by default. Prepare an ignored SSH-enabled qcow2 copy first:
+The Linux QEMU base does not expose SSH by default. Prepare an ignored SSH-enabled qcow2 copy first:
 
 ```bash
 scripts/prepare-qemu-source.sh
@@ -74,6 +76,7 @@ Run local validation:
 ```bash
 packer validate packer
 ansible-playbook --syntax-check ansible/playbook.yml
+ansible-playbook --syntax-check ansible/windows-playbook.yml
 bash -n scripts/*.sh tests/smoke.sh
 ```
 
@@ -126,6 +129,16 @@ Verify the artifact:
 scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 ```
 
+## Windows QEMU Build
+
+The Windows builder derives from `Windows-10-x64.qcow2.zip` in `xlangai/windows_osworld` and provisions over WinRM:
+
+```bash
+packer build -only=windows.qemu.windows_osworld packer
+```
+
+The Windows playbook installs WPS Office `12.2.0.23131`, replaces the OSWorld server with the pinned shared commit, rebuilds `C:\OSWorld\desktop_env\server\main.exe` without a visible console window, disables the Windows privacy/OOBE prompt with privacy choices set off, and resets `Administrator` plus AutoAdminLogon to `osworld-public-evaluation`.
+
 ## VMware Build
 
 The VMware builder derives from the downloaded and extracted `.vmx` file:
@@ -177,6 +190,8 @@ The Ansible playbook installs or verifies these versions:
 - WPS Office `11.1.0.11723`
 - REAPER `7.64`
 - MuseScore `4.6`
+
+The separate Windows playbook installs WPS Office `12.2.0.23131` only, updates the same OSWorld server source, hides the server process window, disables the Windows privacy/OOBE prompt, and refreshes Windows AutoAdminLogon for `Administrator` after changing the password.
 
 It also configures:
 

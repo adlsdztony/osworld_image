@@ -8,6 +8,7 @@
 
 - AWS AMI，基于 `ami-0d23263edb96951d8`
 - QEMU qcow2，基于 Hugging Face 上的 OSWorld qcow2
+- Windows QEMU qcow2，基于 Hugging Face 上的 Windows OSWorld qcow2
 - VMware Workstation VM，基于 Hugging Face 上的 OSWorld VMX
 - Docker XFCE 基础镜像，基于 OSWorld qcow2 rootfs
 - Docker XFCE 更新镜像，基于 Docker 基础镜像并应用同一套 Ansible delta
@@ -32,14 +33,14 @@ build/       构建输出，git ignored
 本机需要：
 
 - `packer`
-- `ansible-playbook`
+- `ansible-playbook`，Windows target 还需要 WinRM 支持
 - `aws` CLI 和有效 AWS 凭证
 - `qemu-system-x86_64`、`qemu-img`、KVM 权限
 - `virt-customize`，用于给 qcow2 base 准备 SSH
 - `docker`、`guestfish`、`qemu-img`，用于 Docker rootfs 迁移
 - VMware Workstation 和 `vmrun`，仅在需要完整 VMware 本地测试时使用
 
-敏感信息只通过环境变量或 ignored var 文件传入。不要把 AWS key、私有 SSH 密码、下载的镜像、构建产物或 `.pkrvars.hcl` 提交进仓库。OSWorld 的公开默认密码会直接写在配置里：AWS 使用 `osworld-public-evaluation`，本地 VM base 使用 `password`，QEMU/VMware 最终产物会把 `user` 重置为 `osworld-public-evaluation`。
+敏感信息只通过环境变量或 ignored var 文件传入。不要把 AWS key、私有 SSH 密码、下载的镜像、构建产物或 `.pkrvars.hcl` 提交进仓库。OSWorld 的公开默认密码会直接写在配置里：AWS 使用 `osworld-public-evaluation`，本地 Linux VM base 使用 `password`，Linux QEMU/VMware 最终产物会把 `user` 重置为 `osworld-public-evaluation`，Windows 产物保留 `Administrator` 并把它重置为 `osworld-public-evaluation`。
 
 ## 快速开始
 
@@ -47,6 +48,7 @@ build/       构建输出，git ignored
 
 ```bash
 packer init packer
+ansible-galaxy collection install -r ansible/collections/requirements.yml
 ```
 
 下载 Hugging Face base image，并生成 ignored Packer var 文件：
@@ -63,7 +65,7 @@ scripts/download-provision-assets.sh
 
 Playbook 会优先检查 `downloads/provision/` 和 `downloads/osworld_server/` 里的 deb、AppImage、tar 归档、snap 缓存以及 OSWorld server 源码归档；脚本也会刷新 WPS 字体和 QEMU SSH deb 缓存。带 checksum 的文件会先校验再复制到目标镜像。缓存缺失时才回退到固定的上游来源。这个脚本需要用户手动跑，Packer 不会默认执行。
 
-QEMU base 默认不暴露 SSH，需要先准备一个 ignored 的 SSH-enabled qcow2 副本：
+Linux QEMU base 默认不暴露 SSH，需要先准备一个 ignored 的 SSH-enabled qcow2 副本：
 
 ```bash
 scripts/prepare-qemu-source.sh
@@ -74,6 +76,7 @@ scripts/prepare-qemu-source.sh
 ```bash
 packer validate packer
 ansible-playbook --syntax-check ansible/playbook.yml
+ansible-playbook --syntax-check ansible/windows-playbook.yml
 bash -n scripts/*.sh tests/smoke.sh
 ```
 
@@ -126,6 +129,16 @@ QEMU 产物会把 `user` 密码重置为公开 OSWorld 密码：`osworld-public-
 scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
 ```
 
+## Windows QEMU 构建
+
+Windows builder 基于 `xlangai/windows_osworld` 里的 `Windows-10-x64.qcow2.zip`，通过 WinRM provision：
+
+```bash
+packer build -only=windows.qemu.windows_osworld packer
+```
+
+Windows playbook 只做 Windows 需要的增量：安装 WPS Office `12.2.0.23131`，替换同一个 pinned OSWorld server commit，把 `C:\OSWorld\desktop_env\server\main.exe` 重新构建成无可见控制台窗口，关闭 Windows 隐私/OOBE 首次登录提示并把隐私选项设为 off，并把 `Administrator` 密码和 AutoAdminLogon 更新为 `osworld-public-evaluation`。
+
 ## VMware 构建
 
 VMware builder 从下载解压出的 `.vmx` 派生：
@@ -177,6 +190,8 @@ Ansible playbook 会安装或验证以下版本：
 - WPS Office `11.1.0.11723`
 - REAPER `7.64`
 - MuseScore `4.6`
+
+单独的 Windows playbook 只安装 WPS Office `12.2.0.23131`，更新同一份 OSWorld server，隐藏 server 进程窗口，关闭 Windows 隐私/OOBE 首次登录提示，并在改密码后刷新 `Administrator` 的 Windows AutoAdminLogon。
 
 同时会配置：
 

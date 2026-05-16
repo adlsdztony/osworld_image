@@ -1,0 +1,712 @@
+- name: Resolve Windows provisioning paths
+  ansible.builtin.set_fact:
+    windows_wps_checksum_hex: "{{ windows_wps.checksum | regex_replace('^sha256:', '') | lower }}"
+    windows_wps_remote_path: "{{ windows_temp_dir }}\\{{ windows_wps.filename }}"
+    windows_osworld_server_remote_archive: "{{ windows_temp_dir }}\\osworld-server-{{ osworld_server_commit }}.tar.gz"
+    windows_osworld_server_extract_dir: "{{ windows_temp_dir }}\\server-src"
+    windows_osworld_server_archive_url: "{{ osworld_server_repo_url | regex_replace('\\.git$', '') }}/archive/{{ osworld_server_commit }}.tar.gz"
+
+- name: Ensure Windows provisioning cache exists
+  ansible.windows.win_file:
+    path: "{{ windows_temp_dir }}"
+    state: directory
+
+- name: Check installed WPS version
+  ansible.windows.win_shell: |
+    $keys = @(
+      'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($root in $keys) {
+      Get-ChildItem -Path $root -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
+        Where-Object { $_.DisplayName -match 'WPS|Kingsoft' } |
+        ForEach-Object {
+          if ($_.DisplayVersion) {
+            Write-Output $_.DisplayVersion
+            exit 0
+          }
+        }
+    }
+    exit 0
+  register: windows_wps_installed_version
+  changed_when: false
+
+- name: Check installed WPS executable version
+  ansible.windows.win_shell: |
+    $paths = @(
+      "$env:ProgramFiles\Kingsoft\WPS Office",
+      "${env:ProgramFiles(x86)}\Kingsoft\WPS Office",
+      "$env:LOCALAPPDATA\Kingsoft\WPS Office"
+    )
+    foreach ($path in $paths) {
+      if (-not (Test-Path -LiteralPath $path)) {
+        continue
+      }
+      $exe = Get-ChildItem -LiteralPath $path -Filter wps.exe -Recurse -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+      if ($exe) {
+        Write-Output $exe.VersionInfo.ProductVersion
+        exit 0
+      }
+    }
+    exit 0
+  register: windows_wps_installed_exe_version
+  changed_when: false
+
+- name: Check controller Windows WPS installer cache
+  ansible.builtin.stat:
+    path: "{{ windows_wps.local_src }}"
+    checksum_algorithm: sha256
+  delegate_to: localhost
+  become: false
+  register: controller_windows_wps_stat
+
+- name: Fail on mismatched cached Windows WPS installer
+  ansible.builtin.fail:
+    msg: >-
+      Cached Windows WPS installer checksum mismatch for {{ windows_wps.local_src }}:
+      expected {{ windows_wps_checksum_hex }}, got {{ controller_windows_wps_stat.stat.checksum }}.
+  when:
+    - controller_windows_wps_stat.stat.exists
+    - controller_windows_wps_stat.stat.checksum != windows_wps_checksum_hex
+
+- name: Copy cached Windows WPS installer from controller
+  ansible.windows.win_copy:
+    src: "{{ windows_wps.local_src }}"
+    dest: "{{ windows_wps_remote_path }}"
+  when: controller_windows_wps_stat.stat.exists
+
+- name: Download pinned Windows WPS installer
+  ansible.windows.win_get_url:
+    url: "{{ windows_wps.url }}"
+    dest: "{{ windows_wps_remote_path }}"
+    checksum: "{{ windows_wps_checksum_hex }}"
+    checksum_algorithm: sha256
+  when: not controller_windows_wps_stat.stat.exists
+
+- name: Verify Windows WPS installer checksum
+  ansible.windows.win_stat:
+    path: "{{ windows_wps_remote_path }}"
+    get_checksum: true
+    checksum_algorithm: sha256
+  register: windows_wps_remote_stat
+  failed_when: windows_wps_remote_stat.stat.checksum | lower != windows_wps_checksum_hex
+
+- name: Start pinned Windows WPS installer
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $installer = '{{ windows_wps_remote_path }}'
+    $taskName = 'OSWorld Install WPS'
+    $existing = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($existing) {
+      if ($existing.State -eq 'Running') {
+        Stop-ScheduledTask -TaskName $taskName
+      }
+      Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+    }
+
+    $action = New-ScheduledTaskAction -Execute $installer -Argument '{{ windows_wps.silent_args }}'
+    $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddSeconds(15)
+    $principal = New-ScheduledTaskPrincipal -UserId '{{ effective_osworld_user }}' -LogonType Interactive -RunLevel Highest
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+    Start-ScheduledTask -TaskName $taskName
+  when:
+    - windows_wps_installed_version.stdout | trim != windows_wps.version
+    - windows_wps_installed_exe_version.stdout | trim != windows_wps.version
+  changed_when: true
+
+- name: Wait for pinned Windows WPS installer
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $expected = '{{ windows_wps.version }}'
+    $taskName = 'OSWorld Install WPS'
+
+    $keys = @(
+      'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($root in $keys) {
+      $match = Get-ChildItem -Path $root -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
+        Where-Object { ($_.DisplayName -match 'WPS|Kingsoft') -and ($_.DisplayVersion -eq $expected) } |
+        Select-Object -First 1
+      if ($match) {
+        Write-Output "installed registry $($match.DisplayName) $($match.DisplayVersion)"
+        exit 0
+      }
+    }
+
+    $paths = @(
+      "$env:ProgramFiles\Kingsoft\WPS Office",
+      "${env:ProgramFiles(x86)}\Kingsoft\WPS Office",
+      "$env:LOCALAPPDATA\Kingsoft\WPS Office"
+    )
+    foreach ($path in $paths) {
+      if (-not (Test-Path -LiteralPath $path)) {
+        continue
+      }
+      $match = Get-ChildItem -LiteralPath $path -Filter wps.exe -Recurse -ErrorAction SilentlyContinue |
+        Where-Object { $_.VersionInfo.ProductVersion -eq $expected } |
+        Select-Object -First 1
+      if ($match) {
+        Write-Output "installed file $($match.FullName) $($match.VersionInfo.ProductVersion)"
+        exit 0
+      }
+    }
+
+    $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if (-not $task) {
+      Write-Output "waiting task_missing"
+      exit 1
+    }
+
+    $info = Get-ScheduledTaskInfo -TaskName $taskName
+    Write-Output "waiting state=$($task.State) result=$($info.LastTaskResult)"
+    if (
+      ($task.State -notin @('Running', 'Queued', 'Ready')) -and
+      ($info.LastTaskResult -notin @(0, 1223, 267009, 267011))
+    ) {
+      exit 2
+    }
+    exit 1
+  register: windows_wps_install_status
+  until: windows_wps_install_status.rc == 0
+  retries: 90
+  delay: 10
+  failed_when: windows_wps_install_status.rc not in [0, 1]
+  changed_when: false
+  when:
+    - windows_wps_installed_version.stdout | trim != windows_wps.version
+    - windows_wps_installed_exe_version.stdout | trim != windows_wps.version
+
+- name: Remove Windows WPS installer task
+  ansible.windows.win_shell: |
+    $taskName = 'OSWorld Install WPS'
+    $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+    if ($task) {
+      Unregister-ScheduledTask -TaskName $taskName -Confirm:$false
+      Write-Output 'changed=true'
+    } else {
+      Write-Output 'changed=false'
+    }
+  register: windows_wps_installer_task_cleanup
+  changed_when: "'changed=true' in windows_wps_installer_task_cleanup.stdout"
+  when:
+    - windows_wps_installed_version.stdout | trim != windows_wps.version
+    - windows_wps_installed_exe_version.stdout | trim != windows_wps.version
+
+- name: Verify pinned Windows WPS version
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $expected = '{{ windows_wps.version }}'
+    $found = @()
+
+    $keys = @(
+      'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall',
+      'HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall'
+    )
+    foreach ($root in $keys) {
+      Get-ChildItem -Path $root -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-ItemProperty -LiteralPath $_.PSPath -ErrorAction SilentlyContinue } |
+        Where-Object { $_.DisplayName -match 'WPS|Kingsoft' } |
+        ForEach-Object {
+          if ($_.DisplayVersion) {
+            $found += [pscustomobject]@{
+              Source = "registry:$($_.DisplayName)"
+              Version = $_.DisplayVersion
+            }
+          }
+        }
+    }
+
+    $paths = @(
+      "$env:ProgramFiles\Kingsoft\WPS Office",
+      "${env:ProgramFiles(x86)}\Kingsoft\WPS Office",
+      "$env:LOCALAPPDATA\Kingsoft\WPS Office"
+    )
+    foreach ($path in $paths) {
+      if (-not (Test-Path -LiteralPath $path)) {
+        continue
+      }
+      Get-ChildItem -LiteralPath $path -Filter wps.exe -Recurse -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          if ($_.VersionInfo.ProductVersion) {
+            $found += [pscustomobject]@{
+              Source = "file:$($_.FullName)"
+              Version = $_.VersionInfo.ProductVersion
+            }
+          }
+        }
+    }
+
+    $match = $found | Where-Object { $_.Version -eq $expected } | Select-Object -First 1
+    if ($match) {
+      Write-Output "$($match.Source) $($match.Version)"
+      exit 0
+    }
+
+    $found | ForEach-Object { Write-Output "$($_.Source) $($_.Version)" }
+    throw "WPS {{ windows_wps.version }} is not installed"
+  changed_when: false
+
+- name: Check candidate Windows OSWorld server paths
+  ansible.windows.win_stat:
+    path: "{{ item }}"
+  register: windows_osworld_server_candidate_stats
+  loop: "{{ windows_osworld_server_dest_candidates }}"
+
+- name: Select Windows OSWorld server destination
+  ansible.builtin.set_fact:
+    windows_osworld_server_dest: >-
+      {{
+        (
+          windows_osworld_server_candidate_stats.results
+          | selectattr('stat.exists')
+          | map(attribute='item')
+          | list
+          | first
+        )
+        | default(windows_osworld_server_dest_candidates[0], true)
+      }}
+
+- name: Ensure Windows OSWorld server destination exists
+  ansible.windows.win_file:
+    path: "{{ windows_osworld_server_dest }}"
+    state: directory
+
+- name: Check controller OSWorld server archive cache
+  ansible.builtin.stat:
+    path: "{{ osworld_server_local_archive }}"
+  delegate_to: localhost
+  become: false
+  register: controller_windows_osworld_server_archive_stat
+
+- name: Copy cached OSWorld server archive to Windows guest
+  ansible.windows.win_copy:
+    src: "{{ osworld_server_local_archive }}"
+    dest: "{{ windows_osworld_server_remote_archive }}"
+  when: controller_windows_osworld_server_archive_stat.stat.exists
+
+- name: Download OSWorld server archive to Windows guest
+  ansible.windows.win_get_url:
+    url: "{{ windows_osworld_server_archive_url }}"
+    dest: "{{ windows_osworld_server_remote_archive }}"
+  when: not controller_windows_osworld_server_archive_stat.stat.exists
+
+- name: Extract pinned OSWorld server source on Windows
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $archive = '{{ windows_osworld_server_remote_archive }}'
+    $extractDir = '{{ windows_osworld_server_extract_dir }}'
+    if (Test-Path -LiteralPath $extractDir) {
+      Remove-Item -LiteralPath $extractDir -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $extractDir -Force | Out-Null
+    & tar.exe -xzf $archive -C $extractDir --strip-components 1
+    if (-not (Test-Path -LiteralPath (Join-Path $extractDir 'main.py'))) {
+      throw "Extracted OSWorld server archive does not contain main.py"
+    }
+  changed_when: true
+
+- name: Stop running Windows OSWorld server processes
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Get-CimInstance Win32_Process -Filter "name = 'main.exe'" |
+      Where-Object {
+        $_.ExecutablePath -and
+        (
+          $_.ExecutablePath -match '\\OSWorld\\.*\\server\\main\.exe$' -or
+          $_.ExecutablePath -match '\\server\\main\.exe$'
+        )
+      } |
+      ForEach-Object {
+        Stop-Process -Id $_.ProcessId -Force
+      }
+  changed_when: false
+
+- name: Replace Windows OSWorld server directory from pinned source
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $dest = '{{ windows_osworld_server_dest }}'
+    $extractDir = '{{ windows_osworld_server_extract_dir }}'
+    New-Item -ItemType Directory -Path $dest -Force | Out-Null
+    Get-ChildItem -LiteralPath $dest -Force | Remove-Item -Recurse -Force
+    Get-ChildItem -LiteralPath $extractDir -Force | ForEach-Object {
+      Copy-Item -LiteralPath $_.FullName -Destination $dest -Recurse -Force
+    }
+    Set-Content -LiteralPath (Join-Path $dest '.osworld-server-commit') -Value '{{ osworld_server_commit }}' -NoNewline
+  changed_when: true
+
+- name: Ensure Windows OSWorld server PyInstaller options
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $script = Join-Path '{{ windows_osworld_server_dest }}' 'build_windows_server.ps1'
+    $text = Get-Content -Raw -LiteralPath $script
+    $updated = $text
+    if ($updated -match '--noconsole') {
+      $updated = $updated.Replace(' --noconsole ', ' ')
+    }
+    if ($updated -notmatch 'collect-submodules comtypes') {
+      $updated = $updated.Replace('--name main ', '--name main --collect-submodules comtypes --hidden-import comtypes.stream ')
+    }
+    if ($updated -eq $text -and $text -notmatch 'collect-submodules comtypes') {
+      throw "Unable to patch Windows server PyInstaller command"
+    }
+    if ($updated -ne $text) {
+      Set-Content -LiteralPath $script -Value $updated -NoNewline
+      Write-Output 'changed=true'
+    } else {
+      Write-Output 'changed=false'
+    }
+  register: windows_osworld_server_pyinstaller_patch
+  changed_when: "'changed=true' in windows_osworld_server_pyinstaller_patch.stdout"
+
+- name: Resolve Windows Python executable
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $candidates = @(
+      '{{ windows_python_exe }}',
+      'C:\Users\{{ effective_osworld_user }}\AppData\Local\Programs\Python\Python312\python.exe',
+      'C:\Users\User\AppData\Local\Programs\Python\Python312\python.exe'
+    )
+
+    foreach ($candidate in $candidates) {
+      if (-not $candidate) {
+        continue
+      }
+      if ($candidate -notmatch '^[A-Za-z]:\\') {
+        $command = Get-Command $candidate -ErrorAction SilentlyContinue
+        if (-not $command -or $command.Source -match '\\WindowsApps\\') {
+          continue
+        }
+        $candidate = $command.Source
+      }
+      if (Test-Path -LiteralPath $candidate) {
+        $version = & $candidate --version 2>&1
+        if ($LASTEXITCODE -eq 0) {
+          Write-Output $candidate
+          exit 0
+        }
+      }
+    }
+
+    $pyLauncherOutput = & py.exe -0p 2>$null
+    foreach ($line in $pyLauncherOutput) {
+      if ($line -match '([A-Za-z]:\\.*python\.exe)') {
+        $candidate = $Matches[1]
+        if (Test-Path -LiteralPath $candidate) {
+          $version = & $candidate --version 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output $candidate
+            exit 0
+          }
+        }
+      }
+    }
+
+    throw 'Unable to find a usable Windows python.exe'
+  register: windows_python_exe_probe
+  changed_when: false
+
+- name: Store resolved Windows Python executable
+  ansible.builtin.set_fact:
+    windows_python_exe_resolved: "{{ windows_python_exe_probe.stdout | trim }}"
+
+- name: Configure Administrator task compatibility paths
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $user = '{{ effective_osworld_user }}'
+    $pythonExe = '{{ windows_python_exe_resolved }}'
+    $pythonDir = Split-Path -Parent $pythonExe
+    if (-not (Test-Path -LiteralPath $pythonExe)) {
+      throw "Resolved python.exe does not exist: $pythonExe"
+    }
+
+    $userPath = [Environment]::GetEnvironmentVariable('Path', 'User')
+    if (-not ($userPath -split ';' | Where-Object { $_ -ieq $pythonDir })) {
+      [Environment]::SetEnvironmentVariable('Path', "$pythonDir;$userPath", 'User')
+    }
+
+    $machinePath = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    if (-not ($machinePath -split ';' | Where-Object { $_ -ieq $pythonDir })) {
+      [Environment]::SetEnvironmentVariable('Path', "$pythonDir;$machinePath", 'Machine')
+    }
+
+    $chromeDir = 'C:\Program Files\Google\Chrome\Application'
+    $chromeExe = Join-Path $chromeDir 'chrome.exe'
+    if (-not (Test-Path -LiteralPath $chromeExe)) {
+      throw "Chrome executable does not exist: $chromeExe"
+    }
+
+    $profileRoot = Join-Path 'C:\Users' $user
+    New-Item -ItemType Directory -Path $profileRoot -Force | Out-Null
+    $adminChromeDir = Join-Path $profileRoot 'chrome-win'
+    $adminChromeExe = Join-Path $adminChromeDir 'chrome.exe'
+    New-Item -ItemType Directory -Path $adminChromeDir -Force | Out-Null
+    if (Test-Path -LiteralPath $adminChromeExe) {
+      Remove-Item -LiteralPath $adminChromeExe -Force
+    }
+
+    $wrapperSource = @'
+    using System;
+    using System.Diagnostics;
+    using System.IO;
+    using System.Text;
+
+    class ChromeWrapper {
+      static string Quote(string value) {
+        return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+      }
+
+      static int Main(string[] args) {
+        string realChrome = @"C:\Program Files\Google\Chrome\Application\chrome.exe";
+        string remoteDebugProfile = @"C:\Users\Administrator\AppData\Local\Google\Chrome\RemoteDebugProfile";
+        Directory.CreateDirectory(remoteDebugProfile);
+
+        var arguments = new StringBuilder();
+        arguments.Append("--user-data-dir=").Append(Quote(remoteDebugProfile)).Append(" ");
+        arguments.Append("--remote-debugging-address=0.0.0.0 --remote-allow-origins=* ");
+        foreach (var arg in args) {
+          arguments.Append(Quote(arg)).Append(" ");
+        }
+
+        var startInfo = new ProcessStartInfo(realChrome, arguments.ToString());
+        startInfo.WorkingDirectory = Path.GetDirectoryName(realChrome);
+        startInfo.UseShellExecute = true;
+        Process.Start(startInfo);
+        return 0;
+      }
+    }
+    '@
+    Add-Type -TypeDefinition $wrapperSource -OutputAssembly $adminChromeExe -OutputType WindowsApplication
+    if (-not (Test-Path -LiteralPath $adminChromeExe)) {
+      throw "Administrator chrome-win wrapper was not created"
+    }
+  changed_when: true
+
+- name: Build Windows OSWorld server executable
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    Set-Location -LiteralPath '{{ windows_osworld_server_dest }}'
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\build_windows_server.ps1 -PythonExe '{{ windows_python_exe_resolved }}' -SyncDir '{{ windows_osworld_server_dest }}'
+  changed_when: true
+
+- name: Verify Windows OSWorld server executable exists
+  ansible.windows.win_stat:
+    path: "{{ windows_osworld_server_dest }}\\main.exe"
+  register: windows_osworld_server_exe_stat
+  failed_when: not windows_osworld_server_exe_stat.stat.exists
+
+- name: Verify Windows OSWorld server commit marker
+  ansible.windows.win_shell: |
+    Get-Content -Raw -LiteralPath '{{ windows_osworld_server_dest }}\.osworld-server-commit'
+  register: windows_osworld_server_marker
+  changed_when: false
+  failed_when: windows_osworld_server_marker.stdout | trim != osworld_server_commit
+
+- name: Allow OSWorld server through Windows Firewall
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $ruleName = 'OSWorld Server 5000'
+    if (-not (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
+      New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort {{ osworld_server_port }} | Out-Null
+      Write-Output 'changed=true'
+    } else {
+      Write-Output 'changed=false'
+    }
+  register: windows_osworld_firewall_rule
+  changed_when: "'changed=true' in windows_osworld_firewall_rule.stdout"
+
+- name: Remove legacy Windows OSWorld server startup shortcuts
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $startupDirs = New-Object System.Collections.Generic.List[string]
+    $startupDirs.Add("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\StartUp")
+    if (Test-Path -LiteralPath 'C:\Users') {
+      Get-ChildItem -LiteralPath 'C:\Users' -Directory -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          $startupDirs.Add((Join-Path $_.FullName 'AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup'))
+        }
+    }
+    $shell = New-Object -ComObject WScript.Shell
+    $changed = $false
+    foreach ($dir in $startupDirs) {
+      if (-not (Test-Path -LiteralPath $dir)) {
+        continue
+      }
+      Get-ChildItem -LiteralPath $dir -Filter '*.lnk' -Force -ErrorAction SilentlyContinue |
+        ForEach-Object {
+          $shortcut = $shell.CreateShortcut($_.FullName)
+          $target = "$($shortcut.TargetPath) $($shortcut.Arguments) $($shortcut.WorkingDirectory)"
+          if ($target -match '\\main\.exe' -and $target -match 'OSWorld|server') {
+            Remove-Item -LiteralPath $_.FullName -Force
+            $changed = $true
+          }
+        }
+    }
+    if ($changed) {
+      Write-Output 'changed=true'
+    } else {
+      Write-Output 'changed=false'
+    }
+  register: windows_osworld_legacy_startup_shortcuts
+  changed_when: "'changed=true' in windows_osworld_legacy_startup_shortcuts.stdout"
+
+- name: Ensure Windows target user profile desktop exists
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $user = '{{ effective_osworld_user }}'
+    Enable-LocalUser -Name $user
+    $profileRoot = Join-Path 'C:\Users' $user
+    $desktop = Join-Path $profileRoot 'Desktop'
+    New-Item -ItemType Directory -Path $desktop -Force | Out-Null
+    $grant = "${user}:(OI)(CI)F"
+    & icacls.exe $profileRoot /grant $grant /C | Out-Null
+    & icacls.exe $desktop /grant $grant /C | Out-Null
+  changed_when: true
+
+- name: Disable Windows privacy and OOBE prompts
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $user = '{{ effective_osworld_user }}'
+    $sid = (Get-LocalUser -Name $user).SID.Value
+    $defaultHiveName = 'OSWorldDefaultUser'
+    $defaultHivePath = 'C:\Users\Default\NTUSER.DAT'
+    $loadedDefaultHive = $false
+
+    function Ensure-Key([string]$Path) {
+      if (-not (Test-Path -LiteralPath $Path)) {
+        New-Item -Path $Path -Force | Out-Null
+      }
+    }
+
+    function Set-Dword([string]$Path, [string]$Name, [int]$Value) {
+      Ensure-Key $Path
+      New-ItemProperty -Path $Path -Name $Name -PropertyType DWord -Value $Value -Force | Out-Null
+    }
+
+    function Set-String([string]$Path, [string]$Name, [string]$Value) {
+      Ensure-Key $Path
+      New-ItemProperty -Path $Path -Name $Name -PropertyType String -Value $Value -Force | Out-Null
+    }
+
+    Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\OOBE' 'DisablePrivacyExperience' 1
+    Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' 'DisableWindowsConsumerFeatures' 1
+    Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\CloudContent' 'DisableTailoredExperiencesWithDiagnosticData' 1
+    Set-Dword 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\DataCollection' 'AllowTelemetry' 0
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\DataCollection' 'AllowTelemetry' 0
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' 'PrivacyConsentStatus' 1
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' 'SkipMachineOOBE' 1
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' 'SkipUserOOBE' 1
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\OOBE' 'ProtectYourPC' 3
+    Set-String 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location' 'Value' 'Deny'
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Sensor\Overrides\{BFA794E4-F964-4FDB-90F6-51056BFE4B44}' 'SensorPermissionState' 0
+    Set-Dword 'HKLM:\SOFTWARE\Microsoft\Settings\FindMyDevice' 'LocationSyncEnabled' 0
+
+    if (Test-Path -LiteralPath $defaultHivePath) {
+      $existingDefaultHive = Get-ChildItem Registry::HKEY_USERS -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "*\$defaultHiveName" } |
+        Select-Object -First 1
+      if (-not $existingDefaultHive) {
+        $regLoadOutput = & reg.exe load "HKU\$defaultHiveName" $defaultHivePath 2>&1
+        if ($LASTEXITCODE -eq 0) {
+          $loadedDefaultHive = $true
+        } else {
+          Write-Output "Default profile hive load skipped: $regLoadOutput"
+        }
+      }
+    }
+
+    $userRoots = @(
+      "Registry::HKEY_USERS\$sid",
+      'Registry::HKEY_USERS\.DEFAULT',
+      "Registry::HKEY_USERS\$defaultHiveName"
+    ) | Where-Object { Test-Path -LiteralPath $_ }
+
+    foreach ($root in $userRoots) {
+      Set-Dword "$root\Software\Microsoft\Windows\CurrentVersion\OOBE" 'PrivacyConsentStatus' 1
+      Set-Dword "$root\Software\Microsoft\Windows\CurrentVersion\Privacy" 'TailoredExperiencesWithDiagnosticDataEnabled' 0
+      Set-Dword "$root\Software\Microsoft\Windows\CurrentVersion\AdvertisingInfo" 'Enabled' 0
+      Set-Dword "$root\Software\Microsoft\Input\TIPC" 'Enabled' 0
+      Set-Dword "$root\Software\Microsoft\InputPersonalization" 'RestrictImplicitTextCollection' 1
+      Set-Dword "$root\Software\Microsoft\InputPersonalization" 'RestrictImplicitInkCollection' 1
+      Set-Dword "$root\Software\Microsoft\InputPersonalization\TrainedDataStore" 'HarvestContacts' 0
+      Set-Dword "$root\Control Panel\International\User Profile" 'HttpAcceptLanguageOptOut' 1
+      Set-String "$root\Software\Microsoft\Windows\CurrentVersion\CapabilityAccessManager\ConsentStore\location" 'Value' 'Deny'
+    }
+
+    if ($loadedDefaultHive) {
+      [gc]::Collect()
+      Start-Sleep -Seconds 1
+      $regUnloadOutput = & reg.exe unload "HKU\$defaultHiveName" 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Output "Default profile hive unload skipped: $regUnloadOutput"
+      }
+    }
+    exit 0
+  changed_when: true
+
+- name: Register OSWorld server startup task
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $taskName = 'OSWorld Server'
+    $user = '{{ effective_osworld_user }}'
+    $dest = '{{ windows_osworld_server_dest }}'
+    $exe = Join-Path $dest 'main.exe'
+    $exeLiteral = $exe.Replace("'", "''")
+    $destLiteral = $dest.Replace("'", "''")
+    $startScript = @"
+    `$ErrorActionPreference = 'SilentlyContinue'
+    Start-Sleep -Seconds 30
+    `$exe = '$exeLiteral'
+    `$dest = '$destLiteral'
+    for (`$attempt = 0; `$attempt -lt 18; `$attempt++) {
+      if (Get-NetTCPConnection -LocalPort {{ osworld_server_port }} -State Listen -ErrorAction SilentlyContinue) {
+        exit 0
+      }
+      `$running = Get-CimInstance Win32_Process -Filter "name = 'main.exe'" -ErrorAction SilentlyContinue |
+        Where-Object { `$_.ExecutablePath -ieq `$exe }
+      if (-not `$running) {
+        Start-Process -FilePath `$exe -WorkingDirectory `$dest -WindowStyle Hidden | Out-Null
+      }
+      Start-Sleep -Seconds 10
+    }
+    exit 1
+    "@
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($startScript))
+    $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -EncodedCommand $encoded"
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
+    $principal = New-ScheduledTaskPrincipal -UserId $user -LogonType Interactive -RunLevel Limited
+    Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+  changed_when: true
+
+- name: Remove Windows provisioning cache
+  ansible.windows.win_file:
+    path: "{{ windows_temp_dir }}"
+    state: absent
+
+- name: Set final Windows password and AutoAdminLogon
+  ansible.windows.win_shell: |
+    $ErrorActionPreference = 'Stop'
+    $user = '{{ effective_osworld_user }}'
+    $password = '{{ windows_final_password }}'
+    Enable-LocalUser -Name $user
+    & net.exe user $user $password /active:yes
+    $sid = (Get-LocalUser -Name $user).SID.Value
+
+    $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
+    New-ItemProperty -Path $winlogon -Name AutoAdminLogon -PropertyType String -Value '1' -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name ForceAutoLogon -PropertyType String -Value '1' -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name DefaultUserName -PropertyType String -Value $user -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name DefaultPassword -PropertyType String -Value $password -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name DefaultDomainName -PropertyType String -Value $env:COMPUTERNAME -Force | Out-Null
+    New-ItemProperty -Path $winlogon -Name AutoLogonSID -PropertyType String -Value $sid -Force | Out-Null
+
+    $systemPolicy = 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Policies\System'
+    New-ItemProperty -Path $systemPolicy -Name DisableCAD -PropertyType DWord -Value 1 -Force | Out-Null
+  changed_when: true
+  no_log: true

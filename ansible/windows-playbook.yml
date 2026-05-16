@@ -1,0 +1,18 @@
+- name: Apply Windows OSWorld image delta
+  hosts: all
+  gather_facts: false
+  vars_files:
+    - group_vars/all.yml
+  pre_tasks:
+    - name: Resolve target OSWorld user
+      ansible.builtin.set_fact:
+        effective_osworld_user: "{{ osworld_user | default(windows_default_osworld_user) }}"
+
+    - name: Verify target OSWorld user exists
+      ansible.windows.win_shell: |
+        $ErrorActionPreference = 'Stop'
+        Get-LocalUser -Name '{{ effective_osworld_user }}' | Select-Object -ExpandProperty Name
+      changed_when: false
+
+  roles:
+    - windows_osworld

@@ -28,6 +28,31 @@ variable "ssh_timeout" {
   default = "45m"
 }
 
+variable "windows_winrm_username" {
+  type        = string
+  default     = "Administrator"
+  description = "WinRM username for the Windows OSWorld qcow2 base image."
+}
+
+variable "windows_winrm_password" {
+  type        = string
+  default     = "osworld-public-evaluation"
+  sensitive   = true
+  description = "WinRM password set by the Windows boot command before provisioning. Keep this aligned with windows_final_password unless intentionally testing a password rotation."
+}
+
+variable "windows_winrm_timeout" {
+  type    = string
+  default = "60m"
+}
+
+variable "windows_final_password" {
+  type        = string
+  default     = "osworld-public-evaluation"
+  sensitive   = true
+  description = "Final password for the Windows OSWorld desktop user and AutoAdminLogon."
+}
+
 variable "headless" {
   type    = bool
   default = true
@@ -105,6 +130,34 @@ variable "qemu_output_directory" {
 variable "qemu_vm_name" {
   type    = string
   default = "osworld-delta.qcow2"
+}
+
+variable "windows_source_qcow2" {
+  type        = string
+  default     = "downloads/windows/Windows-10-x64.qcow2"
+  description = "Path to the unzipped Windows OSWorld qcow2 base image."
+}
+
+variable "windows_source_qcow2_checksum" {
+  type        = string
+  default     = "none"
+  description = "Checksum for windows_source_qcow2, for example sha256:<hex>. The download script writes this into an ignored var file."
+}
+
+variable "windows_output_directory" {
+  type    = string
+  default = "build/windows-osworld"
+}
+
+variable "windows_vm_name" {
+  type    = string
+  default = "osworld-windows.qcow2"
+}
+
+variable "windows_efi_firmware" {
+  type        = string
+  default     = "/usr/share/qemu/OVMF.fd"
+  description = "Monolithic OVMF firmware used to boot the Windows qcow2 base image without a separate efivars artifact."
 }
 
 variable "qemu_accelerator" {

@@ -4,13 +4,13 @@ This project starts from known-good OSWorld base images and applies a determinis
 
 ## Inputs
 
-Use environment variables or ignored local var files for sensitive data. Do not put private credentials in tracked files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local VM base images use `password`, and final QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`.
+Use environment variables or ignored local var files for sensitive data. Do not put private credentials in tracked files. The OSWorld public defaults are encoded directly: AWS uses `osworld-public-evaluation`, local Linux VM base images use `password`, Linux QEMU/VMware artifacts reset `user` to `osworld-public-evaluation`, and Windows artifacts keep `Administrator` and reset it to `osworld-public-evaluation`.
 
 Required before full execution:
 
 - AWS credentials in the environment: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, optional `AWS_SESSION_TOKEN`, and `AWS_REGION` if not using `us-east-1`.
 - Confirmation that temporary AWS resources may be created and deleted, or existing `aws_subnet_id` and `aws_security_group_id` values.
-- Downloaded OSWorld VMware and qcow2 base images via `scripts/download-base-images.sh`.
+- Downloaded OSWorld VMware, Linux qcow2, and Windows qcow2 base images via `scripts/download-base-images.sh`.
 - Local QEMU/KVM for the QEMU smoke test.
 - VMware Workstation `vmrun` for VMware build testing. The project supports VMware VMX, but this machine currently does not have `vmrun`.
 
@@ -29,7 +29,7 @@ Download and inspect the Hugging Face base images:
 scripts/download-base-images.sh
 ```
 
-The script writes `packer/base-images.auto.pkrvars.hcl`, which is ignored by git. It points Packer at the discovered `.vmx` and `.qcow2` paths, records the qcow2 checksum, and caches the checksum-verified WPS symbol font ZIP under ignored `downloads/wps_fonts/`. Run `scripts/download-wps-fonts.sh` directly if only that font asset needs refreshing.
+The script writes `packer/base-images.auto.pkrvars.hcl`, which is ignored by git. It points Packer at the discovered `.vmx`, Linux `.qcow2`, and Windows `.qcow2` paths, records the qcow2 checksums, and caches the checksum-verified WPS symbol font ZIP under ignored `downloads/wps_fonts/`. Run `scripts/download-wps-fonts.sh` directly if only that font asset needs refreshing.
 
 To pre-cache the pinned application artifacts and OSWorld server source archive used by Ansible, run:
 
@@ -37,7 +37,7 @@ To pre-cache the pinned application artifacts and OSWorld server source archive 
 scripts/download-provision-assets.sh
 ```
 
-This writes checked debs to `downloads/provision/deb/`, AppImages to `downloads/provision/appimages/`, tar archives to `downloads/provision/archives/`, cached snaps to `downloads/provision/snaps/` when `snap` is available on the controller, and the server source archive to `downloads/osworld_server/`. It also refreshes the WPS font and QEMU SSH deb caches. Packer does not invoke this script automatically. When the files are present, the playbook copies them from the controller first; missing files still fall back to the pinned upstream sources in `ansible/group_vars/all.yml`.
+This writes checked debs to `downloads/provision/deb/`, the Windows WPS installer to `downloads/provision/windows/`, AppImages to `downloads/provision/appimages/`, tar archives to `downloads/provision/archives/`, cached snaps to `downloads/provision/snaps/` when `snap` is available on the controller, and the server source archive to `downloads/osworld_server/`. It also refreshes the WPS font and QEMU SSH deb caches. Packer does not invoke this script automatically. When the files are present, the playbook copies them from the controller first; missing files still fall back to the pinned upstream sources in `ansible/group_vars/all.yml`.
 
 The qcow2 base does not expose SSH by default. Prepare an ignored SSH-enabled qcow2 copy before the QEMU Packer build:
 
@@ -49,8 +49,10 @@ scripts/prepare-qemu-source.sh
 
 ```bash
 packer init packer
+ansible-galaxy collection install -r ansible/collections/requirements.yml
 packer validate packer
 ansible-playbook --syntax-check ansible/playbook.yml
+ansible-playbook --syntax-check ansible/windows-playbook.yml
 ```
 
 ## AWS AMI Build
@@ -99,6 +101,16 @@ scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2
 
 The local VM builder defaults to the public base-image password `password`. The QEMU artifact resets `user` to the public OSWorld password `osworld-public-evaluation`; `scripts/smoke-qemu.sh` uses that as its default. Set `PKR_VAR_ssh_password`, `SSH_PORT`, `OSWORLD_SSH_PASSWORD`, or pass SSH user/password arguments only if the source or artifact differs from the defaults.
 
+## Windows QEMU qcow2 Build
+
+```bash
+packer build -only=windows.qemu.windows_osworld packer
+```
+
+The Windows builder uses the qcow2 from `https://huggingface.co/datasets/xlangai/windows_osworld/resolve/main/Windows-10-x64.qcow2.zip` and connects over WinRM. It keeps the source image's `Administrator` desktop user, then changes the final password to `osworld-public-evaluation`.
+
+The Windows delta is intentionally separate from the Linux playbook. It installs WPS Office `12.2.0.23131`, updates the same pinned OSWorld server source, rebuilds `C:\OSWorld\desktop_env\server\main.exe` without a visible console window, registers a hidden logon startup task for the server, disables the Windows privacy/OOBE prompt with privacy choices set off, opens port `5000`, and refreshes AutoAdminLogon after the password change.
+
 ## VMware Build
 
 ```bash
@@ -145,6 +157,8 @@ The playbook installs or verifies these versions:
 - WPS Office `11.1.0.11723`
 - REAPER `7.64`
 - MuseScore `4.6`
+
+The Windows playbook pins WPS Office `12.2.0.23131` with the upstream Kingsoft CDN installer and SHA256 checksum from the winget manifest. It does not install the Linux application set.
 
 Several requested snap versions are no longer current in the snap store, so those applications use pinned upstream deb/AppImage/tar artifacts with checksum gates. MuseScore 3 is intentionally not installed; no evidence in this repo shows that it is required by OSWorld tasks.
 
