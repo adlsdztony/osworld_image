@@ -126,7 +126,7 @@ QEMU 产物会把 `user` 密码重置为公开 OSWorld 密码：`osworld-public-
 验证产物：
 
 ```bash
-scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
+scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-v2-ubuntu-x86.qcow2 user
 ```
 
 ## Windows QEMU 构建
@@ -220,7 +220,7 @@ Ansible playbook 会安装或验证以下版本：
 
 ```bash
 scripts/verify-artifact.sh aws ami-...
-scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
+scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-v2-ubuntu-x86.qcow2 user
 ```
 
 ## 本地生成文件

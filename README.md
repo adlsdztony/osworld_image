@@ -126,7 +126,7 @@ The QEMU artifact resets the `user` password to the public OSWorld password: `os
 Verify the artifact:
 
 ```bash
-scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
+scripts/smoke-qemu.sh build/qemu-osworld-<build-id>/osworld-v2-ubuntu-x86.qcow2 user
 ```
 
 ## Windows QEMU Build
@@ -220,7 +220,7 @@ It also configures:
 
 ```bash
 scripts/verify-artifact.sh aws ami-...
-scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-delta.qcow2 user
+scripts/verify-artifact.sh qemu build/qemu-osworld-<build-id>/osworld-v2-ubuntu-x86.qcow2 user
 ```
 
 ## Local Generated Files
