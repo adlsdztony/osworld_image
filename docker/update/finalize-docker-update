@@ -3,6 +3,18 @@ set -euo pipefail
 
 OSWORLD_USER="${OSWORLD_USER:-user}"
 
+user_home=""
+user_uid=""
+user_gid=""
+
+if id "$OSWORLD_USER" >/dev/null 2>&1; then
+  user_home="$(getent passwd "$OSWORLD_USER" | awk -F: '{print $6}')"
+  user_uid="$(id -u "$OSWORLD_USER")"
+  user_gid="$(id -g "$OSWORLD_USER")"
+  install -d -m 0700 -o "$user_uid" -g "$user_gid" "$user_home/.config"
+  install -d -m 0755 -o "$user_uid" -g "$user_gid" "$user_home/.local" "$user_home/.local/share" "$user_home/.local/share/applications"
+fi
+
 wrap_electron_binary() {
   local candidate="$1"
   [ -e "$candidate" ] || return 0
@@ -58,17 +70,93 @@ x-scheme-handler/about=google-chrome.desktop
 x-scheme-handler/unknown=google-chrome.desktop
 EOF
 
-  if id "$OSWORLD_USER" >/dev/null 2>&1; then
-    user_home="$(getent passwd "$OSWORLD_USER" | awk -F: '{print $6}')"
-    user_uid="$(id -u "$OSWORLD_USER")"
-    user_gid="$(id -g "$OSWORLD_USER")"
-    install -d -m 0700 -o "$user_uid" -g "$user_gid" "$user_home/.config"
-    install -d -m 0755 -o "$user_uid" -g "$user_gid" "$user_home/.local" "$user_home/.local/share" "$user_home/.local/share/applications"
+  if [ -n "$user_home" ]; then
     sudo -u "$OSWORLD_USER" env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" XDG_DATA_HOME="$user_home/.local/share" \
       xdg-mime default google-chrome.desktop text/html x-scheme-handler/http x-scheme-handler/https x-scheme-handler/about x-scheme-handler/unknown
     sudo -u "$OSWORLD_USER" env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" XDG_DATA_HOME="$user_home/.local/share" XDG_CURRENT_DESKTOP=XFCE \
       xdg-settings set default-web-browser google-chrome.desktop || true
   fi
+fi
+
+if [ -n "$user_home" ]; then
+  libreoffice_writer_mimes=(
+    application/msword
+    application/vnd.ms-word
+    application/x-msword
+    application/msword-template
+    application/rtf
+    text/rtf
+    application/vnd.openxmlformats-officedocument.wordprocessingml.document
+    application/vnd.openxmlformats-officedocument.wordprocessingml.template
+    application/vnd.oasis.opendocument.text
+    application/vnd.oasis.opendocument.text-template
+    application/wps-office.doc
+    application/wps-office.docx
+    application/wps-office.dot
+    application/wps-office.dotx
+  )
+  libreoffice_calc_mimes=(
+    application/vnd.ms-excel
+    application/msexcel
+    application/x-msexcel
+    application/x-ms-excel
+    application/x-dos_ms_excel
+    application/x-excel
+    application/x-xls
+    application/xls
+    application/excel
+    application/csv
+    text/csv
+    text/spreadsheet
+    text/comma-separated-values
+    text/tab-separated-values
+    application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+    application/vnd.openxmlformats-officedocument.spreadsheetml.template
+    application/vnd.oasis.opendocument.spreadsheet
+    application/vnd.oasis.opendocument.spreadsheet-template
+    application/wps-office.xls
+    application/wps-office.xlsx
+    application/wps-office.xlt
+    application/wps-office.xltx
+  )
+  libreoffice_impress_mimes=(
+    application/vnd.ms-powerpoint
+    application/mspowerpoint
+    application/vnd.mspowerpoint
+    application/powerpoint
+    application/x-mspowerpoint
+    application/vnd.openxmlformats-officedocument.presentationml.presentation
+    application/vnd.openxmlformats-officedocument.presentationml.template
+    application/vnd.openxmlformats-officedocument.presentationml.slideshow
+    application/vnd.openxmlformats-officedocument.presentationml.slide
+    application/vnd.oasis.opendocument.presentation
+    application/vnd.oasis.opendocument.presentation-template
+    application/wps-office.ppt
+    application/wps-office.pptx
+    application/wps-office.pot
+    application/wps-office.potx
+  )
+
+  set_user_mime_default() {
+    local desktop_file="$1"
+    shift
+    sudo -u "$OSWORLD_USER" env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" XDG_DATA_HOME="$user_home/.local/share" \
+      xdg-mime default "$desktop_file" "$@"
+
+    local mime_type actual
+    for mime_type in "$@"; do
+      actual="$(sudo -u "$OSWORLD_USER" env HOME="$user_home" XDG_CONFIG_HOME="$user_home/.config" XDG_DATA_HOME="$user_home/.local/share" \
+        xdg-mime query default "$mime_type" || true)"
+      if [ "$actual" != "$desktop_file" ]; then
+        printf 'Failed to set %s default to %s; got %s\n' "$mime_type" "$desktop_file" "$actual" >&2
+        return 1
+      fi
+    done
+  }
+
+  set_user_mime_default libreoffice-writer.desktop "${libreoffice_writer_mimes[@]}"
+  set_user_mime_default libreoffice-calc.desktop "${libreoffice_calc_mimes[@]}"
+  set_user_mime_default libreoffice-impress.desktop "${libreoffice_impress_mimes[@]}"
 fi
 
 rm -f /etc/systemd/system/osworld.service /lib/systemd/system/osworld.service

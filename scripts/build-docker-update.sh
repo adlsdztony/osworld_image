@@ -7,6 +7,7 @@ BUILD_TAG="${BUILD_TAG:-osworld-xfce:build}"
 IMAGE_TAG="${IMAGE_TAG:-osworld-xfce:latest}"
 PLATFORM="${PLATFORM:-linux/amd64}"
 OSWORLD_USER="${OSWORLD_USER:-user}"
+FLATTEN_IMAGE="${FLATTEN_IMAGE:-0}"
 
 for bin in docker; do
   command -v "$bin" >/dev/null 2>&1 || {
@@ -48,7 +49,7 @@ DOCKER_BUILDKIT=1 docker build \
   -f "$ROOT_DIR/docker/update/Dockerfile" \
   "$ROOT_DIR"
 
-if [ "${FLATTEN_IMAGE:-1}" = "1" ]; then
+if [ "$FLATTEN_IMAGE" = "1" ]; then
   container_id=""
   cleanup_container() {
     if [ -n "$container_id" ]; then

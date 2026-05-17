@@ -81,5 +81,65 @@ docker exec "$CONTAINER_NAME" bash -lc '
   launch_as_user xdg-settings get default-web-browser | grep -qx "google-chrome.desktop" \
     || fail "Chrome is not the default browser"
 
+  declare -A mime_defaults=(
+    [application/msword]=libreoffice-writer.desktop
+    [application/vnd.ms-word]=libreoffice-writer.desktop
+    [application/x-msword]=libreoffice-writer.desktop
+    [application/msword-template]=libreoffice-writer.desktop
+    [application/rtf]=libreoffice-writer.desktop
+    [text/rtf]=libreoffice-writer.desktop
+    [application/vnd.openxmlformats-officedocument.wordprocessingml.document]=libreoffice-writer.desktop
+    [application/vnd.openxmlformats-officedocument.wordprocessingml.template]=libreoffice-writer.desktop
+    [application/vnd.ms-excel]=libreoffice-calc.desktop
+    [application/msexcel]=libreoffice-calc.desktop
+    [application/x-msexcel]=libreoffice-calc.desktop
+    [application/x-ms-excel]=libreoffice-calc.desktop
+    [application/x-dos_ms_excel]=libreoffice-calc.desktop
+    [application/x-excel]=libreoffice-calc.desktop
+    [application/x-xls]=libreoffice-calc.desktop
+    [application/xls]=libreoffice-calc.desktop
+    [application/excel]=libreoffice-calc.desktop
+    [application/csv]=libreoffice-calc.desktop
+    [text/csv]=libreoffice-calc.desktop
+    [text/spreadsheet]=libreoffice-calc.desktop
+    [text/comma-separated-values]=libreoffice-calc.desktop
+    [text/tab-separated-values]=libreoffice-calc.desktop
+    [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]=libreoffice-calc.desktop
+    [application/vnd.openxmlformats-officedocument.spreadsheetml.template]=libreoffice-calc.desktop
+    [application/vnd.ms-powerpoint]=libreoffice-impress.desktop
+    [application/mspowerpoint]=libreoffice-impress.desktop
+    [application/vnd.mspowerpoint]=libreoffice-impress.desktop
+    [application/powerpoint]=libreoffice-impress.desktop
+    [application/x-mspowerpoint]=libreoffice-impress.desktop
+    [application/vnd.openxmlformats-officedocument.presentationml.presentation]=libreoffice-impress.desktop
+    [application/vnd.openxmlformats-officedocument.presentationml.template]=libreoffice-impress.desktop
+    [application/vnd.openxmlformats-officedocument.presentationml.slideshow]=libreoffice-impress.desktop
+    [application/vnd.openxmlformats-officedocument.presentationml.slide]=libreoffice-impress.desktop
+    [application/vnd.oasis.opendocument.text]=libreoffice-writer.desktop
+    [application/vnd.oasis.opendocument.text-template]=libreoffice-writer.desktop
+    [application/vnd.oasis.opendocument.spreadsheet]=libreoffice-calc.desktop
+    [application/vnd.oasis.opendocument.spreadsheet-template]=libreoffice-calc.desktop
+    [application/vnd.oasis.opendocument.presentation]=libreoffice-impress.desktop
+    [application/vnd.oasis.opendocument.presentation-template]=libreoffice-impress.desktop
+    [application/wps-office.doc]=libreoffice-writer.desktop
+    [application/wps-office.docx]=libreoffice-writer.desktop
+    [application/wps-office.dot]=libreoffice-writer.desktop
+    [application/wps-office.dotx]=libreoffice-writer.desktop
+    [application/wps-office.xls]=libreoffice-calc.desktop
+    [application/wps-office.xlsx]=libreoffice-calc.desktop
+    [application/wps-office.xlt]=libreoffice-calc.desktop
+    [application/wps-office.xltx]=libreoffice-calc.desktop
+    [application/wps-office.ppt]=libreoffice-impress.desktop
+    [application/wps-office.pptx]=libreoffice-impress.desktop
+    [application/wps-office.pot]=libreoffice-impress.desktop
+    [application/wps-office.potx]=libreoffice-impress.desktop
+  )
+
+  for mime in "${!mime_defaults[@]}"; do
+    actual="$(launch_as_user xdg-mime query default "$mime")"
+    test "$actual" = "${mime_defaults[$mime]}" \
+      || fail "$mime default expected ${mime_defaults[$mime]}, got $actual"
+  done
+
   printf "Docker update smoke checks passed\n"
 '
