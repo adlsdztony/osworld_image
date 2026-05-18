@@ -49,6 +49,11 @@ assert_file_contains() {
   grep -Fq "$needle" "$path" || fail "$path missing expected content: $needle"
 }
 
+command -v node >/dev/null 2>&1 || fail "node command missing"
+command -v npm >/dev/null 2>&1 || fail "npm command missing"
+node --version | grep -Eq '^v[0-9]+' || fail "node --version did not return a version"
+npm --version | grep -Eq '^[0-9]+' || fail "npm --version did not return a version"
+
 assert_dpkg_version obsidian "1.10.6"
 assert_dpkg_version xmind-vana "26.1.3145"
 assert_dpkg_version wps-office "11.1.0.11723"

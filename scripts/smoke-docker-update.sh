@@ -30,6 +30,11 @@ docker exec "$CONTAINER_NAME" bash -lc '
     command -v "$required" >/dev/null 2>&1 || fail "$required is missing from PATH"
   done
 
+  command -v node >/dev/null 2>&1 || fail "node command missing"
+  command -v npm >/dev/null 2>&1 || fail "npm command missing"
+  node --version | grep -Eq "^v[0-9]+" || fail "node --version did not return a version"
+  npm --version | grep -Eq "^[0-9]+" || fail "npm --version did not return a version"
+
   test "$(basename "$(readlink /proc/1/exe)")" = tini || fail "PID 1 is not tini"
   supervisorctl status
   pgrep -x Xvfb >/dev/null || fail "Xvfb is not running"

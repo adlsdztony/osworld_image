@@ -20,6 +20,10 @@ controller_archive_download_dir: "{{ controller_provision_download_dir }}/archiv
 controller_snap_download_dir: "{{ controller_provision_download_dir }}/snaps"
 download_timeout_seconds: 300
 
+node_runtime_packages:
+  - nodejs
+  - npm
+
 osworld_server_repo_url: https://github.com/adlsdztony/osworld-server.git
 osworld_server_commit: a6979eaf85ce22c281119d2b60e1f25da6dd68ec
 osworld_server_local_archive: "{{ controller_download_dir }}/osworld_server/osworld-server-{{ osworld_server_commit }}.tar.gz"

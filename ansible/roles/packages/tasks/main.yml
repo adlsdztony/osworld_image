@@ -47,6 +47,45 @@
   environment:
     DEBIAN_FRONTEND: noninteractive
 
+- name: Install Node.js runtime for task-local web apps
+  ansible.builtin.apt:
+    name: "{{ node_runtime_packages }}"
+    state: present
+    update_cache: false
+  environment:
+    DEBIAN_FRONTEND: noninteractive
+
+- name: Ensure node command exists
+  ansible.builtin.shell: |
+    set -euo pipefail
+    if command -v node >/dev/null 2>&1; then
+      printf 'changed=0\n'
+      exit 0
+    fi
+    nodejs_path="$(command -v nodejs || true)"
+    if [ -n "$nodejs_path" ]; then
+      ln -sf "$nodejs_path" /usr/local/bin/node
+      printf 'changed=1\n'
+      exit 0
+    fi
+    printf 'node and nodejs are both missing\n' >&2
+    exit 1
+  args:
+    executable: /bin/bash
+  register: node_command_result
+  changed_when: "'changed=1' in node_command_result.stdout"
+
+- name: Verify Node.js runtime commands
+  ansible.builtin.command: "{{ item }} --version"
+  changed_when: false
+  loop:
+    - node
+    - npm
+
+- name: Clean apt cache after system package installs
+  ansible.builtin.command: apt-get clean
+  changed_when: false
+
 - name: Install snapd for VM targets
   ansible.builtin.apt:
     name: snapd
@@ -137,6 +176,14 @@
   register: deb_versions
   changed_when: false
   failed_when: item.version_assert not in deb_versions.stdout
+  loop: "{{ deb_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Remove transient deb package artifacts
+  ansible.builtin.file:
+    path: "{{ artifact_cache_dir }}/{{ item.filename }}"
+    state: absent
   loop: "{{ deb_packages }}"
   loop_control:
     label: "{{ item.name }}"
@@ -264,6 +311,24 @@
   register: snap_versions
   changed_when: false
   failed_when: snap_versions.stdout != item.expected_version
+  loop: "{{ snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: target_platform | default('') != 'docker'
+
+- name: Remove transient snap package artifacts
+  ansible.builtin.file:
+    path: "{{ artifact_cache_dir }}/{{ item.name }}.snap"
+    state: absent
+  loop: "{{ snap_packages }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: target_platform | default('') != 'docker'
+
+- name: Remove transient snap assertion artifacts
+  ansible.builtin.file:
+    path: "{{ artifact_cache_dir }}/{{ item.name }}.assert"
+    state: absent
   loop: "{{ snap_packages }}"
   loop_control:
     label: "{{ item.name }}"
@@ -435,6 +500,11 @@
   changed_when: false
   failed_when: ("Blender " ~ blender.version) not in blender_version.stdout
 
+- name: Remove transient Blender archive
+  ansible.builtin.file:
+    path: "{{ artifact_cache_dir }}/{{ blender.filename }}"
+    state: absent
+
 - name: Check controller Zotero archive cache
   ansible.builtin.stat:
     path: "{{ controller_archive_download_dir }}/{{ zotero.filename }}"
@@ -513,6 +583,11 @@
   register: zotero_version
   changed_when: false
   failed_when: zotero_version.stdout != zotero.version
+
+- name: Remove transient Zotero archive
+  ansible.builtin.file:
+    path: "{{ artifact_cache_dir }}/{{ zotero.filename }}"
+    state: absent
 
 - name: Refresh desktop application database
   ansible.builtin.command: update-desktop-database /usr/share/applications
