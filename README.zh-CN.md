@@ -197,7 +197,7 @@ Ansible playbook 会安装或验证以下版本：
 
 - Chrome Safe Browsing 为 no protection managed policy
 - Zotero 本机通信设置
-- OSWorld server，缓存存在时来自 `downloads/osworld_server/`，否则回退到 `https://github.com/adlsdztony/osworld-server`
+- OSWorld server，缓存存在时来自 `downloads/osworld_server/`，否则回退到 `https://github.com/xlang-ai/osworld-server`
 - `/etc/X11/xorg.conf` 的 `MaxClients 2048`
 - 常见 office MIME 类型默认使用 LibreOffice
 - WPS symbol fonts，并通过 checksum 和 `fc-list` 验证

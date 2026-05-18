@@ -2,7 +2,7 @@
 set -euo pipefail
 
 CONTAINER_NAME="${CONTAINER_NAME:-osworld-xfce}"
-EXPECTED_SERVER_COMMIT="${EXPECTED_SERVER_COMMIT:-a6979eaf85ce22c281119d2b60e1f25da6dd68ec}"
+EXPECTED_SERVER_COMMIT="${EXPECTED_SERVER_COMMIT:-a3cc3f0c64e463f020d1a44780307e9b46cbcab1}"
 
 docker exec "$CONTAINER_NAME" bash -lc '
   set -euo pipefail

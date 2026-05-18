@@ -197,7 +197,7 @@ It also configures:
 
 - Chrome Safe Browsing as a no-protection managed policy
 - Zotero local communication preferences
-- OSWorld server from `downloads/osworld_server/` when cached, otherwise `https://github.com/adlsdztony/osworld-server`
+- OSWorld server from `downloads/osworld_server/` when cached, otherwise `https://github.com/xlang-ai/osworld-server`
 - `/etc/X11/xorg.conf` with `MaxClients 2048`
 - Common office MIME defaults to LibreOffice
 - WPS symbol fonts, verified by checksum and `fc-list`

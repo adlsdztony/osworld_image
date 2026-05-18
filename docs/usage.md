@@ -17,8 +17,8 @@ Required before full execution:
 The OSWorld server source is pinned to:
 
 ```text
-https://github.com/adlsdztony/osworld-server.git
-a6979eaf85ce22c281119d2b60e1f25da6dd68ec
+https://github.com/xlang-ai/osworld-server.git
+a3cc3f0c64e463f020d1a44780307e9b46cbcab1
 ```
 
 ## Base Images
